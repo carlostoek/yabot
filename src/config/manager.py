@@ -6,6 +6,7 @@ import os
 from typing import Optional
 from dotenv import load_dotenv
 from src.core.models import BotConfig, WebhookConfig, LoggingConfig
+from src.utils.validators import InputValidator
 
 
 class ConfigManager:
@@ -85,3 +86,11 @@ class ConfigManager:
             raise ValueError("Invalid webhook URL: Must use HTTPS protocol")
         
         return True
+    
+    def validate_bot_token(self) -> bool:
+        """Validate bot token format."""
+        try:
+            token = self.get_bot_token()
+            return InputValidator.validate_bot_token(token)
+        except ValueError:
+            return False

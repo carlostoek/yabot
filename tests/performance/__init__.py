@@ -1,0 +1,1 @@
+"""Performance test module for the Telegram bot framework."""

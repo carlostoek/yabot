@@ -1,0 +1,32 @@
+# Test dependencies
+pytest==7.4.0
+pytest-asyncio==0.21.0
+pytest-cov==4.1.0
+pytest-mock==3.11.1
+pytest-xdist==3.3.1
+pytest-html==3.2.0
+pytest-timeout==2.1.0
+
+# Security testing
+bandit==1.7.5
+safety==2.3.5
+semgrep==1.30.0
+
+# Performance testing
+pytest-benchmark==4.0.0
+locust==2.15.1
+
+# Code quality
+flake8==6.0.0
+black==23.7.0
+mypy==1.4.1
+pylint==2.17.4
+
+# Mocking and factories
+factory-boy==3.3.0
+responses==0.23.1
+aioresponses==0.7.4
+
+# Test utilities
+freezegun==1.2.2
+testcontainers==3.7.1
