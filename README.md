@@ -18,6 +18,67 @@ The framework serves as the base infrastructure for a Telegram bot with basic co
 - **Middleware Support**: Request/response processing pipeline
 - **Extensible Design**: Easy to extend with new commands and features
 
+## Requirements
+
+### Functional Requirements
+
+1. **Telegram Bot Configuration**
+   - WHEN the bot is initialized THEN the system SHALL establish a connection with Telegram API using a valid bot token
+   - WHEN the bot token is invalid THEN the system SHALL log an appropriate error and fail gracefully
+   - WHEN the bot is configured THEN the system SHALL support both polling and webhook modes for receiving updates
+   - WHEN the bot starts THEN the system SHALL validate all required configuration parameters before beginning operation
+
+2. **Basic Command Implementation**
+   - WHEN a user sends /start command THEN the bot SHALL respond with a welcome message and basic usage instructions
+   - WHEN a user sends /menu command THEN the bot SHALL display the main menu with available options
+   - WHEN a user sends an unrecognized command THEN the bot SHALL respond with a helpful message explaining available commands
+   - WHEN commands are executed THEN the bot SHALL respond within 3 seconds under normal network conditions
+   - WHEN multiple users send commands simultaneously THEN the bot SHALL handle all requests without blocking
+
+3. **Webhook Integration**
+   - WHEN webhook mode is enabled THEN the system SHALL configure a secure HTTPS endpoint for receiving Telegram updates
+   - WHEN a webhook receives an update THEN the system SHALL process it asynchronously without blocking other requests
+   - WHEN webhook configuration fails THEN the system SHALL fallback to polling mode and log the webhook error
+   - WHEN the webhook endpoint receives invalid requests THEN the system SHALL reject them and log security warnings
+   - WHEN webhook SSL certificate is invalid THEN the system SHALL fail with a clear error message during configuration
+
+4. **Error Handling and Logging**
+   - WHEN any error occurs THEN the system SHALL log the error with timestamp, severity level, and context information
+   - WHEN a user encounters an error THEN the bot SHALL respond with a user-friendly error message without exposing system details
+   - WHEN critical errors occur THEN the system SHALL attempt graceful recovery and continue operating if possible
+   - WHEN the bot is unable to send a message THEN the system SHALL retry with exponential backoff up to 3 attempts
+
+5. **Message Processing**
+   - WHEN a text message is received THEN the system SHALL route it to the appropriate handler based on content
+   - WHEN an unsupported message type is received THEN the bot SHALL inform the user about supported message types
+   - WHEN message processing takes longer than expected THEN the system SHALL send a "processing" indicator to the user
+   - WHEN message handlers are registered THEN the system SHALL support middleware for preprocessing and postprocessing
+
+### Non-Functional Requirements
+
+1. **Performance**
+   - The bot SHALL respond to commands within 3 seconds under normal conditions
+   - The system SHALL handle at least 100 concurrent users without performance degradation
+   - Memory usage SHALL not exceed 512MB during normal operation
+
+2. **Security**
+   - All communication with Telegram API SHALL use HTTPS/TLS encryption
+   - Bot token SHALL be stored securely using environment variables
+   - Webhook endpoint SHALL validate incoming request signatures
+   - User input SHALL be sanitized to prevent injection attacks
+
+3. **Reliability**
+   - The bot SHALL have 99% uptime during operational hours
+   - System SHALL automatically restart after crashes with state preservation
+   - Failed message deliveries SHALL be retried with exponential backoff
+   - Critical errors SHALL be logged with sufficient detail for debugging
+
+4. **Usability**
+   - Command responses SHALL be clear and include helpful instructions
+   - Error messages SHALL be user-friendly and actionable
+   - Menu navigation SHALL be intuitive with clear option descriptions
+   - Bot SHALL provide help documentation accessible via commands
+
 ## Project Structure
 
 ```
@@ -94,6 +155,31 @@ LOG_FORMAT=json
 
 The bot follows a layered architecture with clear boundaries between components:
 
+```mermaid
+graph TD
+    A[Telegram API] --> B[Webhook/Polling Receiver]
+    B --> C[Middleware Pipeline]
+    C --> D[Router]
+    D --> E[Command Handlers]
+    D --> F[Message Handlers]
+    E --> G[Business Services]
+    F --> G
+    G --> H[Response Formatter]
+    H --> I[Bot Instance]
+    I --> A
+
+    J[Configuration Manager] --> B
+    J --> G
+    K[Logger] --> C
+    K --> E
+    K --> F
+    K --> G
+    L[Error Handler] --> C
+    L --> G
+```
+
+### Components
+
 1. **BotApplication**: Main application orchestrator that initializes and coordinates all components
 2. **ConfigManager**: Centralized configuration management with validation
 3. **Router**: Routes incoming messages to appropriate handlers
@@ -143,6 +229,16 @@ pytest tests/test_config.py
 1. Create a new handler class that extends `BaseHandler`
 2. Register the handler with the router in `src/core/application.py`
 3. Add tests for the new handler
+
+## Error Handling
+
+The bot implements comprehensive error handling with the following features:
+
+- **Centralized Error Management**: All errors are processed through a central ErrorHandler
+- **Graceful Degradation**: The bot continues operating even when non-critical errors occur
+- **User-Friendly Messages**: Technical error details are logged but not exposed to users
+- **Retry Mechanisms**: Failed operations are retried with exponential backoff
+- **Contextual Logging**: Errors are logged with full context for debugging
 
 ## Testing
 

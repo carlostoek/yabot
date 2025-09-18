@@ -6,6 +6,10 @@ from typing import Any, Optional
 from src.handlers.base import BaseHandler
 from src.core.models import CommandResponse
 from src.utils.logger import get_logger
+from src.services.user import UserService
+from src.events.bus import EventBus
+from src.events.models import create_event
+from src.database.manager import DatabaseManager
 
 logger = get_logger(__name__)
 
@@ -13,9 +17,17 @@ logger = get_logger(__name__)
 class CommandHandler(BaseHandler):
     """Handles bot commands like /start and /menu with standardized response patterns."""
     
-    def __init__(self):
-        """Initialize the command handler."""
+    def __init__(self, user_service: Optional[UserService] = None, 
+                 event_bus: Optional[EventBus] = None):
+        """Initialize the command handler.
+        
+        Args:
+            user_service (Optional[UserService]): User service for database operations
+            event_bus (Optional[EventBus]): Event bus for publishing events
+        """
         super().__init__()
+        self.user_service = user_service
+        self.event_bus = event_bus
     
     async def handle(self, update: Any) -> Optional[CommandResponse]:
         """Handle an incoming update.
@@ -42,6 +54,46 @@ class CommandHandler(BaseHandler):
         """
         logger.info("Processing /start command")
         
+        # Extract user information from message
+        user = getattr(message, 'from_user', None)
+        user_id = str(user.id) if user else "unknown"
+        
+        # If we have database context, create or update user
+        if self.user_service:
+            try:
+                user_context = await self.user_service.get_user_context(user_id)
+                logger.info("Existing user context retrieved: %s", user_id)
+                
+                # Update last login time
+                await self.user_service.update_user_profile(user_id, {})
+            except Exception:
+                # User doesn't exist, create new user
+                try:
+                    telegram_user_data = {
+                        "id": user.id if user else None,
+                        "username": user.username if user else None,
+                        "first_name": user.first_name if user else None,
+                        "last_name": user.last_name if user else None,
+                        "language_code": user.language_code if user else None
+                    }
+                    user_context = await self.user_service.create_user(telegram_user_data)
+                    logger.info("New user created: %s", user_id)
+                except Exception as e:
+                    logger.error("Error creating user: %s", str(e))
+        
+        # Publish user interaction event
+        if self.event_bus:
+            try:
+                event = create_event(
+                    "user_interaction",
+                    user_id=user_id,
+                    action="start",
+                    context={"message_id": getattr(message, 'message_id', None)}
+                )
+                await self.event_bus.publish("user_interaction", event.dict())
+            except Exception as e:
+                logger.warning("Failed to publish user_interaction event: %s", str(e))
+        
         welcome_text = (
             "👋 Welcome to the Telegram Bot!\n\n"
             "I'm here to help you with various tasks and provide information.\n\n"
@@ -64,6 +116,23 @@ class CommandHandler(BaseHandler):
             CommandResponse: The menu response
         """
         logger.info("Processing /menu command")
+        
+        # Extract user information from message
+        user = getattr(message, 'from_user', None)
+        user_id = str(user.id) if user else "unknown"
+        
+        # Publish user interaction event
+        if self.event_bus:
+            try:
+                event = create_event(
+                    "user_interaction",
+                    user_id=user_id,
+                    action="menu",
+                    context={"message_id": getattr(message, 'message_id', None)}
+                )
+                await self.event_bus.publish("user_interaction", event.dict())
+            except Exception as e:
+                logger.warning("Failed to publish user_interaction event: %s", str(e))
         
         menu_text = (
             "📋 Main Menu\n\n"
@@ -89,6 +158,23 @@ class CommandHandler(BaseHandler):
         """
         logger.info("Processing /help command")
         
+        # Extract user information from message
+        user = getattr(message, 'from_user', None)
+        user_id = str(user.id) if user else "unknown"
+        
+        # Publish user interaction event
+        if self.event_bus:
+            try:
+                event = create_event(
+                    "user_interaction",
+                    user_id=user_id,
+                    action="help",
+                    context={"message_id": getattr(message, 'message_id', None)}
+                )
+                await self.event_bus.publish("user_interaction", event.dict())
+            except Exception as e:
+                logger.warning("Failed to publish user_interaction event: %s", str(e))
+        
         help_text = (
             "ℹ️ Help Information\n\n"
             "Available commands:\n"
@@ -110,6 +196,23 @@ class CommandHandler(BaseHandler):
             CommandResponse: The response for unknown commands
         """
         logger.info("Processing unknown command")
+        
+        # Extract user information from message
+        user = getattr(message, 'from_user', None)
+        user_id = str(user.id) if user else "unknown"
+        
+        # Publish user interaction event
+        if self.event_bus:
+            try:
+                event = create_event(
+                    "user_interaction",
+                    user_id=user_id,
+                    action="unknown",
+                    context={"message_id": getattr(message, 'message_id', None)}
+                )
+                await self.event_bus.publish("user_interaction", event.dict())
+            except Exception as e:
+                logger.warning("Failed to publish user_interaction event: %s", str(e))
         
         unknown_text = (
             "❓ Unknown command\n\n"

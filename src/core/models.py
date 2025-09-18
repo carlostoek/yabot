@@ -41,3 +41,16 @@ class CommandResponse(BaseModel):
     parse_mode: Optional[str] = "HTML"
     reply_markup: Optional[dict] = None
     disable_notification: bool = False
+
+
+class DatabaseConfig(BaseModel):
+    """Configuration model for database connections."""
+    mongodb_uri: str
+    mongodb_database: str
+    sqlite_database_path: str
+
+
+class RedisConfig(BaseModel):
+    """Configuration model for Redis connection."""
+    redis_url: str
+    redis_password: Optional[str] = None

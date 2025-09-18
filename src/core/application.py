@@ -11,6 +11,9 @@ from src.core.error_handler import ErrorHandler
 from src.handlers.commands import CommandHandler
 from src.handlers.webhook import WebhookHandler
 from src.utils.logger import get_logger, configure_logging
+from src.database.manager import DatabaseManager
+from src.events.bus import EventBus
+from src.services.user import UserService
 
 logger = get_logger(__name__)
 
@@ -27,6 +30,13 @@ class BotApplication:
         self.router = Router()
         self.middleware_manager = MiddlewareManager()
         self.error_handler = ErrorHandler()
+        
+        # Initialize database and event components (will be set up during start)
+        self.database_manager: Optional[DatabaseManager] = None
+        self.event_bus: Optional[EventBus] = None
+        self.user_service: Optional[UserService] = None
+        
+        # Initialize handlers with database context
         self.command_handler = CommandHandler()
         self.webhook_handler = WebhookHandler()
         
@@ -53,7 +63,11 @@ class BotApplication:
                 logger.error("Configuration validation failed")
                 return False
             
-            # Set up command handlers
+            # Set up database and event components
+            await self._setup_database()
+            await self._setup_event_bus()
+            
+            # Set up command handlers with database context
             self._setup_command_handlers()
             
             # Configure update receiving mode (webhook or polling)
@@ -175,6 +189,14 @@ class BotApplication:
         """Set up the command handlers with the router."""
         logger.debug("Setting up command handlers")
         
+        # Reinitialize command handler with database context if available
+        if self.user_service and self.event_bus:
+            self.command_handler = CommandHandler(self.user_service, self.event_bus)
+        elif self.user_service:
+            self.command_handler = CommandHandler(self.user_service)
+        elif self.event_bus:
+            self.command_handler = CommandHandler(event_bus=self.event_bus)
+        
         # Register command handlers
         self.router.register_command_handler("start", self.command_handler.handle_start)
         self.router.register_command_handler("menu", self.command_handler.handle_menu)
@@ -225,6 +247,70 @@ class BotApplication:
             # Fall back to polling mode
             logger.info("Falling back to polling mode")
             return await self._setup_polling_mode()
+    
+    async def _setup_database(self) -> bool:
+        """Initialize database connections as required by fase1 specification.
+        
+        Returns:
+            bool: True if database setup was successful, False otherwise
+        """
+        logger.info("Setting up database connections")
+        
+        try:
+            # Initialize database manager
+            self.database_manager = DatabaseManager(self.config_manager)
+            
+            # Connect to all databases
+            success = await self.database_manager.connect_all()
+            
+            if not success:
+                logger.error("Failed to connect to databases")
+                return False
+            
+            # Initialize user service
+            self.user_service = UserService(self.database_manager, self.event_bus or EventBus(self.config_manager))
+            
+            logger.info("Database connections set up successfully")
+            return True
+            
+        except Exception as e:
+            error_context = {
+                "operation": "setup_database",
+                "component": "BotApplication"
+            }
+            user_message = await self.error_handler.handle_error(e, error_context)
+            logger.error("Error setting up database connections: %s", user_message)
+            return False
+    
+    async def _setup_event_bus(self) -> bool:
+        """Initialize event bus as required by fase1 specification.
+        
+        Returns:
+            bool: True if event bus setup was successful, False otherwise
+        """
+        logger.info("Setting up event bus")
+        
+        try:
+            # Initialize event bus
+            self.event_bus = EventBus(self.config_manager)
+            
+            # Connect to Redis
+            success = await self.event_bus.connect()
+            
+            if not success:
+                logger.warning("Failed to connect to Redis, events will be queued locally")
+            
+            logger.info("Event bus set up successfully")
+            return True
+            
+        except Exception as e:
+            error_context = {
+                "operation": "setup_event_bus",
+                "component": "BotApplication"
+            }
+            user_message = await self.error_handler.handle_error(e, error_context)
+            logger.error("Error setting up event bus: %s", user_message)
+            return False
     
     async def _setup_polling_mode(self) -> bool:
         """Set up the bot to receive updates via polling.
