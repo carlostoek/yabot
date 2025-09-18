@@ -214,7 +214,7 @@ def test_update_received_event():
 def test_event_models_dict():
     """Test EVENT_MODELS dictionary."""
     assert isinstance(EVENT_MODELS, dict)
-    assert len(EVENT_MODELS) == 9
+    assert len(EVENT_MODELS) == 11
     
     expected_types = [
         "user_interaction",
@@ -224,8 +224,10 @@ def test_event_models_dict():
         "besitos_awarded",
         "narrative_hint_unlocked",
         "vip_access_granted",
+        "user_registered",
         "user_deleted",
-        "update_received"
+        "update_received",
+        "event_processing_failed"
     ]
     
     for event_type in expected_types:

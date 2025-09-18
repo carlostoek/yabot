@@ -43,6 +43,26 @@ class CommandHandler(BaseHandler):
         # will be called directly
         return None
     
+    async def _publish_user_interaction_event(self, user_id: str, action: str, message: Any) -> None:
+        """Publish a user interaction event.
+        
+        Args:
+            user_id (str): The user ID
+            action (str): The action performed
+            message (Any): The message that triggered the action
+        """
+        if self.event_bus:
+            try:
+                event = create_event(
+                    "user_interaction",
+                    user_id=user_id,
+                    action=action,
+                    context={"message_id": getattr(message, 'message_id', None)}
+                )
+                await self.event_bus.publish("user_interaction", event.dict())
+            except Exception as e:
+                logger.warning("Failed to publish user_interaction event: %s", str(e))
+    
     async def handle_start(self, message: Any) -> CommandResponse:
         """Process /start command.
         
@@ -82,17 +102,7 @@ class CommandHandler(BaseHandler):
                     logger.error("Error creating user: %s", str(e))
         
         # Publish user interaction event
-        if self.event_bus:
-            try:
-                event = create_event(
-                    "user_interaction",
-                    user_id=user_id,
-                    action="start",
-                    context={"message_id": getattr(message, 'message_id', None)}
-                )
-                await self.event_bus.publish("user_interaction", event.dict())
-            except Exception as e:
-                logger.warning("Failed to publish user_interaction event: %s", str(e))
+        await self._publish_user_interaction_event(user_id, "start", message)
         
         welcome_text = (
             "👋 Welcome to the Telegram Bot!\n\n"
@@ -122,17 +132,7 @@ class CommandHandler(BaseHandler):
         user_id = str(user.id) if user else "unknown"
         
         # Publish user interaction event
-        if self.event_bus:
-            try:
-                event = create_event(
-                    "user_interaction",
-                    user_id=user_id,
-                    action="menu",
-                    context={"message_id": getattr(message, 'message_id', None)}
-                )
-                await self.event_bus.publish("user_interaction", event.dict())
-            except Exception as e:
-                logger.warning("Failed to publish user_interaction event: %s", str(e))
+        await self._publish_user_interaction_event(user_id, "menu", message)
         
         menu_text = (
             "📋 Main Menu\n\n"
@@ -163,17 +163,7 @@ class CommandHandler(BaseHandler):
         user_id = str(user.id) if user else "unknown"
         
         # Publish user interaction event
-        if self.event_bus:
-            try:
-                event = create_event(
-                    "user_interaction",
-                    user_id=user_id,
-                    action="help",
-                    context={"message_id": getattr(message, 'message_id', None)}
-                )
-                await self.event_bus.publish("user_interaction", event.dict())
-            except Exception as e:
-                logger.warning("Failed to publish user_interaction event: %s", str(e))
+        await self._publish_user_interaction_event(user_id, "help", message)
         
         help_text = (
             "ℹ️ Help Information\n\n"
@@ -202,17 +192,7 @@ class CommandHandler(BaseHandler):
         user_id = str(user.id) if user else "unknown"
         
         # Publish user interaction event
-        if self.event_bus:
-            try:
-                event = create_event(
-                    "user_interaction",
-                    user_id=user_id,
-                    action="unknown",
-                    context={"message_id": getattr(message, 'message_id', None)}
-                )
-                await self.event_bus.publish("user_interaction", event.dict())
-            except Exception as e:
-                logger.warning("Failed to publish user_interaction event: %s", str(e))
+        await self._publish_user_interaction_event(user_id, "unknown", message)
         
         unknown_text = (
             "❓ Unknown command\n\n"
