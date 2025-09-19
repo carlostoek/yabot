@@ -43,7 +43,12 @@ class Router:
         Returns:
             bool: True if database context is available, False otherwise
         """
-        return self.user_service is not None or self.database_manager is not None
+        # Check if we have at least one database-related service available
+        has_user_service = self.user_service is not None
+        has_db_manager = (self.database_manager is not None and 
+                         hasattr(self.database_manager, 'is_connected') and 
+                         self.database_manager.is_connected)
+        return has_user_service or has_db_manager
     
     @property
     def has_event_context(self) -> bool:
@@ -52,7 +57,10 @@ class Router:
         Returns:
             bool: True if event bus context is available, False otherwise
         """
-        return self.event_bus is not None
+        # Check if event bus is available and connected
+        return (self.event_bus is not None and 
+               hasattr(self.event_bus, 'is_connected') and 
+               self.event_bus.is_connected)
     
     def register_command_handler(self, command: str, handler: Callable) -> None:
         """Register command handlers.

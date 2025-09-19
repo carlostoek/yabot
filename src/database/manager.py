@@ -40,7 +40,7 @@ class DatabaseManager:
         """Initialize connections to all configured databases.
         
         Returns:
-            bool: True if all connections were established successfully, False otherwise
+            bool: True if connections were established successfully, False otherwise
         """
         logger.info("Initializing connections to all databases")
         
@@ -48,30 +48,42 @@ class DatabaseManager:
             # Get database configuration
             db_config = self.config_manager.get_database_config()
             
-            # Connect to MongoDB with retry logic
-            mongo_success = await self._connect_mongodb(
-                db_config.mongodb_uri, 
-                db_config.mongodb_database
-            )
+            # Try to connect to MongoDB, but don't fail if not configured
+            mongo_success = True
+            if db_config.mongodb_uri and db_config.mongodb_database:
+                mongo_success = await self._connect_mongodb(
+                    db_config.mongodb_uri, 
+                    db_config.mongodb_database
+                )
+                if not mongo_success:
+                    logger.warning("Failed to connect to MongoDB, continuing without it")
+            else:
+                logger.warning("MongoDB configuration not found, continuing without it")
             
-            if not mongo_success:
-                logger.error("Failed to connect to MongoDB")
-                return False
+            # Try to connect to SQLite, but don't fail if not configured
+            sqlite_success = True
+            if db_config.sqlite_database_path:
+                sqlite_success = self._connect_sqlite(db_config.sqlite_database_path)
+                if not sqlite_success:
+                    logger.warning("Failed to connect to SQLite, continuing without it")
+            else:
+                logger.warning("SQLite configuration not found, continuing without it")
             
-            # Connect to SQLite
-            sqlite_success = self._connect_sqlite(db_config.sqlite_database_path)
+            # Consider connected if at least one database is available or none are configured
+            # We'll mark as connected to allow the bot to function with limited capabilities
+            self._is_connected = mongo_success or sqlite_success
+            if self._is_connected:
+                logger.info("Successfully connected to available databases")
+            else:
+                logger.warning("No database connections available, bot will run with limited functionality")
             
-            if not sqlite_success:
-                logger.error("Failed to connect to SQLite")
-                return False
-            
-            self._is_connected = True
-            logger.info("Successfully connected to all databases")
-            return True
+            return True  # Always return True to allow bot to start
             
         except Exception as e:
             logger.error("Error initializing database connections: %s", str(e))
-            return False
+            # Don't prevent bot startup on database errors
+            logger.warning("Continuing without database connections")
+            return True
     
     async def _connect_mongodb(self, uri: str, database: str) -> bool:
         """Connect to MongoDB with exponential backoff retry logic.

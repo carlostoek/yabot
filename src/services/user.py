@@ -121,6 +121,11 @@ class UserService:
         Returns:
             bool: True if successful, False otherwise
         """
+        # Check if database manager is available
+        if not self.database_manager:
+            logger.warning("Database manager not available, cannot create user profile")
+            return False
+            
         try:
             conn = self.database_manager.get_sqlite_conn()
             cursor = conn.cursor()
