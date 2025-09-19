@@ -14,6 +14,7 @@ from src.utils.logger import get_logger, configure_logging
 from src.database.manager import DatabaseManager
 from src.events.bus import EventBus
 from src.services.user import UserService
+from src.api.server import APIServer  # Added for API server initialization
 
 logger = get_logger(__name__)
 
@@ -35,6 +36,9 @@ class BotApplication:
         self.database_manager: Optional[DatabaseManager] = None
         self.event_bus: Optional[EventBus] = None
         self.user_service: Optional[UserService] = None
+        
+        # Initialize API server (will be set up during start)
+        self.api_server: Optional[APIServer] = None
         
         # Initialize handlers with database context
         self.command_handler = CommandHandler()
@@ -67,8 +71,17 @@ class BotApplication:
             await self._setup_database()
             await self._setup_event_bus()
             
+            # Set up user service after database and event bus
+            await self._setup_user_service()
+            
+            # Set up API server
+            await self._setup_api_server()
+            
             # Set up command handlers with database context
             self._setup_command_handlers()
+            
+            # Set up webhook handler with event bus context
+            self._setup_webhook_handler()
             
             # Configure update receiving mode (webhook or polling)
             if self._should_use_webhook():
@@ -110,6 +123,7 @@ class BotApplication:
             # 2. Close any open connections
             # 3. Save any pending state
             # 4. Clean up resources
+            # 5. Stop the API server if it's running
             
             logger.info("Bot application stopped successfully")
             return True
@@ -205,6 +219,16 @@ class BotApplication:
         
         logger.debug("Command handlers set up successfully")
     
+    def _setup_webhook_handler(self) -> None:
+        """Set up the webhook handler with event bus context."""
+        logger.debug("Setting up webhook handler")
+        
+        # Reinitialize webhook handler with event bus context if available
+        if self.event_bus:
+            self.webhook_handler = WebhookHandler(event_bus=self.event_bus)
+        
+        logger.debug("Webhook handler set up successfully")
+    
     def _should_use_webhook(self) -> bool:
         """Determine if webhook mode should be used.
         
@@ -267,9 +291,6 @@ class BotApplication:
                 logger.error("Failed to connect to databases")
                 return False
             
-            # Initialize user service
-            self.user_service = UserService(self.database_manager, self.event_bus or EventBus(self.config_manager))
-            
             logger.info("Database connections set up successfully")
             return True
             
@@ -312,6 +333,115 @@ class BotApplication:
             logger.error("Error setting up event bus: %s", user_message)
             return False
     
+    async def _setup_user_service(self) -> bool:
+        """Initialize user service after database and event bus are set up.
+        
+        Returns:
+            bool: True if user service setup was successful, False otherwise
+        """
+        logger.info("Setting up user service")
+        
+        try:
+            # Initialize user service with database manager and event bus
+            if self.database_manager:
+                self.user_service = UserService(self.database_manager, self.event_bus)
+                logger.info("User service set up successfully")
+                return True
+            else:
+                logger.error("Database manager not initialized, cannot set up user service")
+                return False
+                
+        except Exception as e:
+            error_context = {
+                "operation": "setup_user_service",
+                "component": "BotApplication"
+            }
+            user_message = await self.error_handler.handle_error(e, error_context)
+            logger.error("Error setting up user service: %s", user_message)
+            return False
+        """Initialize event bus as required by fase1 specification.
+        
+        Returns:
+            bool: True if event bus setup was successful, False otherwise
+        """
+        logger.info("Setting up event bus")
+        
+        try:
+            # Initialize event bus
+            self.event_bus = EventBus(self.config_manager)
+            
+            # Connect to Redis
+            success = await self.event_bus.connect()
+            
+            if not success:
+                logger.warning("Failed to connect to Redis, events will be queued locally")
+            
+            logger.info("Event bus set up successfully")
+            return True
+            
+        except Exception as e:
+            error_context = {
+                "operation": "setup_event_bus",
+                "component": "BotApplication"
+            }
+            user_message = await self.error_handler.handle_error(e, error_context)
+            logger.error("Error setting up event bus: %s", user_message)
+            return False
+    
+    async def _setup_api_server(self) -> bool:
+        """Initialize API server as required by fase1 specification.
+        
+        Returns:
+            bool: True if API server setup was successful, False otherwise
+        """
+        logger.info("Setting up API server")
+        
+        try:
+            # Initialize API server
+            self.api_server = APIServer(self.config_manager)
+            
+            # Register API endpoints
+            self._register_api_endpoints()
+            
+            # In a real implementation, we would start the server in a separate task
+            # For now, we'll just set it up and log that it's ready
+            logger.info("API server set up successfully")
+            return True
+            
+        except Exception as e:
+            error_context = {
+                "operation": "setup_api_server",
+                "component": "BotApplication"
+            }
+            user_message = await self.error_handler.handle_error(e, error_context)
+            logger.error("Error setting up API server: %s", user_message)
+            return False
+    
+    def _register_api_endpoints(self) -> None:
+        """Register API endpoints with the API server."""
+        logger.debug("Registering API endpoints")
+        
+        try:
+            # Import endpoint routers
+            from src.api.endpoints.users import router as user_router
+            from src.api.endpoints.narrative import router as narrative_router
+            
+            # Register routers with the API server
+            if self.api_server:
+                self.api_server.app.include_router(user_router)
+                self.api_server.app.include_router(narrative_router)
+                logger.debug("API endpoints registered successfully")
+            else:
+                logger.warning("API server not initialized, cannot register endpoints")
+                
+        except Exception as e:
+            error_context = {
+                "operation": "register_api_endpoints",
+                "component": "BotApplication"
+            }
+            user_message = self.error_handler.handle_error(e, error_context)
+            logger.error("Error registering API endpoints: %s", user_message)
+
     async def _setup_polling_mode(self) -> bool:
         """Set up the bot to receive updates via polling.
         

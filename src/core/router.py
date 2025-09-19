@@ -4,18 +4,55 @@ Router component for the Telegram bot framework.
 
 from typing import Dict, Callable, Any, Optional, List
 from src.utils.logger import get_logger
+from src.services.user import UserService
+from src.events.bus import EventBus
+from src.database.manager import DatabaseManager
 
 logger = get_logger(__name__)
 
 
 class Router:
-    """Routes incoming messages to appropriate handlers based on message type and content."""
+    """Routes incoming messages to appropriate handlers based on message type and content.
     
-    def __init__(self):
-        """Initialize the router."""
+    The Router can be enhanced with database context to provide handlers with access to
+    database operations, event publishing, and other services. When handlers are registered,
+    they can optionally accept a 'router' parameter to access these services.
+    """
+    
+    def __init__(self, user_service: Optional[UserService] = None, 
+                 event_bus: Optional[EventBus] = None,
+                 database_manager: Optional[DatabaseManager] = None):
+        """Initialize the router with optional database context.
+        
+        Args:
+            user_service (UserService, optional): User service for database operations
+            event_bus (EventBus, optional): Event bus for publishing events
+            database_manager (DatabaseManager, optional): Database manager for direct database access
+        """
         self._command_handlers: Dict[str, Callable] = {}
         self._message_handlers: List[tuple] = []  # (filter, handler) tuples
         self._default_handler: Optional[Callable] = None
+        self.user_service = user_service
+        self.event_bus = event_bus
+        self.database_manager = database_manager
+    
+    @property
+    def has_database_context(self) -> bool:
+        """Check if the router has database context available.
+        
+        Returns:
+            bool: True if database context is available, False otherwise
+        """
+        return self.user_service is not None or self.database_manager is not None
+    
+    @property
+    def has_event_context(self) -> bool:
+        """Check if the router has event bus context available.
+        
+        Returns:
+            bool: True if event bus context is available, False otherwise
+        """
+        return self.event_bus is not None
     
     def register_command_handler(self, command: str, handler: Callable) -> None:
         """Register command handlers.
@@ -70,7 +107,13 @@ class Router:
             handler = self._command_handlers.get(command)
             if handler:
                 logger.info("Routing command /%s to handler", command)
-                return await handler(update)
+                # Pass router context to handler if it accepts it
+                import inspect
+                handler_signature = inspect.signature(handler)
+                if 'router' in handler_signature.parameters:
+                    return await handler(update, router=self)
+                else:
+                    return await handler(update)
             else:
                 logger.info("No handler found for command /%s", command)
         
@@ -78,12 +121,24 @@ class Router:
         for message_filter, handler in self._message_handlers:
             if await self._matches_filter(update, message_filter):
                 logger.info("Routing message to handler with filter %s", type(message_filter).__name__)
-                return await handler(update)
+                # Pass router context to handler if it accepts it
+                import inspect
+                handler_signature = inspect.signature(handler)
+                if 'router' in handler_signature.parameters:
+                    return await handler(update, router=self)
+                else:
+                    return await handler(update)
         
         # Use default handler if no specific handler matched
         if self._default_handler:
             logger.info("Routing to default handler")
-            return await self._default_handler(update)
+            # Pass router context to handler if it accepts it
+            import inspect
+            handler_signature = inspect.signature(self._default_handler)
+            if 'router' in handler_signature.parameters:
+                return await self._default_handler(update, router=self)
+            else:
+                return await self._default_handler(update)
         
         # No handler available
         logger.warning("No handler found for update")
