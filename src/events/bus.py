@@ -200,8 +200,11 @@ class EventBus:
             # Try to publish to Redis if connected
             if self._is_connected and self._redis_client:
                 try:
+                    # Convert datetime objects to ISO format strings for JSON serialization
+                    serializable_payload = self._make_json_serializable(payload)
+                    
                     # Serialize payload
-                    serialized_payload = json.dumps(payload)
+                    serialized_payload = json.dumps(serializable_payload)
                     
                     # Publish to Redis
                     await self._redis_client.publish(event_name, serialized_payload)
@@ -218,6 +221,34 @@ class EventBus:
             logger.error("Error publishing event: %s", str(e))
             return False
     
+    def _make_json_serializable(self, obj: Any) -> Any:
+        """Convert non-JSON-serializable objects to serializable formats.
+        
+        Args:
+            obj: Object to make JSON serializable
+            
+        Returns:
+            JSON-serializable version of the object
+        """
+        import datetime
+        
+        if isinstance(obj, datetime.datetime):
+            return obj.isoformat()
+        elif isinstance(obj, datetime.date):
+            return obj.isoformat()
+        elif isinstance(obj, datetime.time):
+            return obj.isoformat()
+        elif isinstance(obj, dict):
+            return {k: self._make_json_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._make_json_serializable(item) for item in obj]
+        elif isinstance(obj, tuple):
+            return tuple(self._make_json_serializable(item) for item in obj)
+        elif isinstance(obj, set):
+            return [self._make_json_serializable(item) for item in obj]
+        else:
+            return obj
+
     async def _queue_locally(self, event_name: str, payload: Dict[str, Any]) -> bool:
         """Queue event locally when Redis is unavailable.
         
@@ -272,8 +303,11 @@ class EventBus:
                 event_name = queued_event["event_name"]
                 payload = queued_event["payload"]
                 
+                # Make payload JSON serializable
+                serializable_payload = self._make_json_serializable(payload)
+                
                 # Serialize payload
-                serialized_payload = json.dumps(payload)
+                serialized_payload = json.dumps(serializable_payload)
                 
                 # Publish to Redis
                 await self._redis_client.publish(event_name, serialized_payload)
