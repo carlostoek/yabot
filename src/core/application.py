@@ -21,6 +21,8 @@ from src.events.bus import EventBus
 from src.services.user import UserService
 from src.api.server import APIServer  # Added for API server initialization
 
+logger = get_logger(__name__)
+
 
 class BotApplication:
     """Main application orchestrator that initializes and coordinates all components."""
