@@ -3,12 +3,17 @@ Bot application for the Telegram bot framework.
 """
 
 import asyncio
-from typing import Any, Optional
+from typing import Any, Optional, Dict, Callable
+from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
+from aiogram.filters import Command
 from src.config.manager import ConfigManager
 from src.core.router import Router
 from src.core.middleware import MiddlewareManager
 from src.core.error_handler import ErrorHandler
 from src.handlers.commands import CommandHandler
+from src.handlers.telegram_commands import CommandHandler as TelegramCommandHandler
 from src.handlers.webhook import WebhookHandler
 from src.utils.logger import get_logger, configure_logging
 from src.database.manager import DatabaseManager
@@ -42,11 +47,17 @@ class BotApplication:
         
         # Initialize handlers with database context
         self.command_handler = CommandHandler()
+        self.telegram_command_handler = TelegramCommandHandler()
         self.webhook_handler = WebhookHandler()
+        
+        # Initialize Telegram bot components
+        self.bot: Optional[Bot] = None
+        self.dispatcher: Optional[Dispatcher] = None
         
         # State tracking
         self._is_running = False
         self._is_webhook_enabled = False
+        self._polling_task: Optional[asyncio.Task] = None
         
         # Configure logging
         configure_logging(self.config_manager)
@@ -67,6 +78,14 @@ class BotApplication:
                 logger.error("Configuration validation failed")
                 return False
             
+            # Initialize Telegram bot
+            bot_token = self.config_manager.get_bot_token()
+            self.bot = Bot(
+                token=bot_token,
+                default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+            )
+            self.dispatcher = Dispatcher()
+            
             # Set up database and event components
             await self._setup_database()
             await self._setup_event_bus()
@@ -82,6 +101,9 @@ class BotApplication:
             
             # Set up webhook handler with event bus context
             self._setup_webhook_handler()
+            
+            # Register Telegram command handlers
+            self._register_telegram_handlers()
             
             # Configure update receiving mode (webhook or polling)
             if self._should_use_webhook():
@@ -115,15 +137,24 @@ class BotApplication:
         logger.info("Stopping bot application")
         
         try:
+            # Stop polling if it's running
+            if hasattr(self, '_polling_task') and self._polling_task:
+                self._polling_task.cancel()
+                try:
+                    await self._polling_task
+                except asyncio.CancelledError:
+                    pass
+            
+            # Stop dispatcher polling
+            if self.dispatcher:
+                await self.dispatcher.stop_polling()
+            
+            # Close bot session
+            if self.bot:
+                await self.bot.session.close()
+            
             # Perform cleanup operations
             self._is_running = False
-            
-            # In a real implementation, we would:
-            # 1. Stop receiving updates
-            # 2. Close any open connections
-            # 3. Save any pending state
-            # 4. Clean up resources
-            # 5. Stop the API server if it's running
             
             logger.info("Bot application stopped successfully")
             return True
@@ -182,22 +213,11 @@ class BotApplication:
         """
         logger.info("Configuring polling mode")
         
-        try:
-            # In a real implementation, this would configure the bot
-            # to use polling instead of webhooks
-            
-            self._is_webhook_enabled = False
-            logger.info("Polling mode configured successfully")
-            return True
-            
-        except Exception as e:
-            error_context = {
-                "operation": "configure_polling",
-                "component": "BotApplication"
-            }
-            user_message = self.error_handler.handle_error(e, error_context)
-            logger.error("Failed to configure polling: %s", user_message)
-            return False
+        # In the new implementation, polling is handled by aiogram
+        # This method is kept for compatibility but doesn't need to do anything
+        self._is_webhook_enabled = False
+        logger.info("Polling mode configured successfully")
+        return True
     
     def _setup_command_handlers(self) -> None:
         """Set up the command handlers with the router."""
@@ -206,10 +226,16 @@ class BotApplication:
         # Reinitialize command handler with database context if available
         if self.user_service and self.event_bus:
             self.command_handler = CommandHandler(self.user_service, self.event_bus)
+            self.telegram_command_handler = TelegramCommandHandler(self.user_service, self.event_bus)
         elif self.user_service:
             self.command_handler = CommandHandler(self.user_service)
+            self.telegram_command_handler = TelegramCommandHandler(self.user_service)
         elif self.event_bus:
             self.command_handler = CommandHandler(event_bus=self.event_bus)
+            self.telegram_command_handler = TelegramCommandHandler(event_bus=self.event_bus)
+        else:
+            self.command_handler = CommandHandler()
+            self.telegram_command_handler = TelegramCommandHandler()
         
         # Register command handlers
         self.router.register_command_handler("start", self.command_handler.handle_start)
@@ -219,15 +245,65 @@ class BotApplication:
         
         logger.debug("Command handlers set up successfully")
     
-    def _setup_webhook_handler(self) -> None:
-        """Set up the webhook handler with event bus context."""
-        logger.debug("Setting up webhook handler")
+    def _register_telegram_handlers(self) -> None:
+        """Register Telegram command handlers with the dispatcher."""
+        logger.debug("Registering Telegram command handlers")
         
-        # Reinitialize webhook handler with event bus context if available
-        if self.event_bus:
-            self.webhook_handler = WebhookHandler(event_bus=self.event_bus)
+        if not self.dispatcher:
+            logger.error("Dispatcher not initialized")
+            return
         
-        logger.debug("Webhook handler set up successfully")
+        # Register command handlers
+        async def start_handler(message: Any) -> None:
+            try:
+                response = await self.telegram_command_handler.handle_start(message)
+                if response and self.bot:
+                    await self.bot.send_message(
+                        chat_id=message.chat.id,
+                        text=response.text,
+                        parse_mode=response.parse_mode,
+                        reply_markup=response.reply_markup,
+                        disable_notification=response.disable_notification
+                    )
+            except Exception as e:
+                logger.error("Error handling /start command: %s", str(e))
+        
+        # Register /menu command handler
+        async def menu_handler(message: Any) -> None:
+            try:
+                response = await self.telegram_command_handler.handle_menu(message)
+                if response and self.bot:
+                    await self.bot.send_message(
+                        chat_id=message.chat.id,
+                        text=response.text,
+                        parse_mode=response.parse_mode,
+                        reply_markup=response.reply_markup,
+                        disable_notification=response.disable_notification
+                    )
+            except Exception as e:
+                logger.error("Error handling /menu command: %s", str(e))
+        
+        # Register /help command handler
+        async def help_handler(message: Any) -> None:
+            try:
+                response = await self.telegram_command_handler.handle_help(message)
+                if response and self.bot:
+                    await self.bot.send_message(
+                        chat_id=message.chat.id,
+                        text=response.text,
+                        parse_mode=response.parse_mode,
+                        reply_markup=response.reply_markup,
+                        disable_notification=response.disable_notification
+                    )
+            except Exception as e:
+                logger.error("Error handling /help command: %s", str(e))
+        
+        # Register handlers with dispatcher
+        self.dispatcher.message.register(start_handler, Command("start"))
+        self.dispatcher.message.register(menu_handler, Command("menu"))
+        self.dispatcher.message.register(help_handler, Command("help"))
+        
+        logger.debug("Telegram command handlers registered successfully")
     
     def _should_use_webhook(self) -> bool:
         """Determine if webhook mode should be used.
@@ -414,6 +490,16 @@ class BotApplication:
             user_message = self.error_handler.handle_error(e, error_context)
             logger.error("Error registering API endpoints: %s", user_message)
 
+    def _setup_webhook_handler(self) -> None:
+        """Set up the webhook handler with event bus context."""
+        logger.debug("Setting up webhook handler")
+        
+        # Reinitialize webhook handler with event bus context if available
+        if self.event_bus:
+            self.webhook_handler = WebhookHandler(event_bus=self.event_bus)
+        
+        logger.debug("Webhook handler set up successfully")
+    
     async def _setup_polling_mode(self) -> bool:
         """Set up the bot to receive updates via polling.
         
@@ -423,16 +509,19 @@ class BotApplication:
         logger.info("Setting up polling mode")
         
         try:
-            # Configure polling
-            success = self.configure_polling()
-            
-            if not success:
-                logger.error("Failed to set up polling mode")
+            # Start polling in a separate task
+            if self.bot and self.dispatcher:
+                logger.info("Starting Telegram bot polling")
+                # Start polling in the background
+                self._polling_task = asyncio.create_task(
+                    self.dispatcher.start_polling(self.bot)
+                )
+                logger.info("Polling mode set up successfully")
+                return True
+            else:
+                logger.error("Bot or dispatcher not initialized")
                 return False
-            
-            logger.info("Polling mode set up successfully")
-            return True
-            
+                
         except Exception as e:
             error_context = {
                 "operation": "setup_polling_mode",
