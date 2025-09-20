@@ -110,20 +110,31 @@ class CrossModuleService:
         
         logger.info(f"User {user_id} awarded {besitos_awarded} besitos for reaction")
 
-# Dependency function to get ItemManager instance
-async def get_item_manager() -> ItemManager:
-    # This is a placeholder - you'll need to implement proper dependency injection
-    # For now, we'll create a basic instance
-    # Note: You may need to pass required dependencies to ItemManager's constructor
-    return ItemManager()
-
 # Dependency function to get CrossModuleService instance
-async def get_cross_module_service(
-    user_service: UserService = Depends(create_user_service),
-    subscription_service: SubscriptionService = Depends(create_subscription_service),
-    item_manager: ItemManager = Depends(get_item_manager),
-    narrative_service: NarrativeService = Depends(create_narrative_service)
-) -> CrossModuleService:
+async def get_cross_module_service() -> CrossModuleService:
+    # This is a simplified implementation that creates the necessary dependencies
+    # In a real implementation, you would use proper dependency injection
+    # For now, we'll create None placeholders
+    # Note: This will need to be properly implemented with actual dependency injection
+    from src.database.manager import DatabaseManager
+    from src.events.bus import EventBus
+    
+    # Create database manager and event bus instances
+    # These would normally be injected through your application's setup
+    database_manager = DatabaseManager()
+    event_bus = EventBus()
+    
+    # Create the required services
+    user_service = await create_user_service(database_manager, event_bus)
+    subscription_service = await create_subscription_service(database_manager, event_bus)
+    
+    # Create ItemManager (this needs proper implementation)
+    # For now, we'll create a basic instance
+    item_manager = ItemManager()
+    
+    # Create NarrativeService
+    narrative_service = await create_narrative_service(database_manager, subscription_service, event_bus)
+    
     return CrossModuleService(
         user_service, 
         subscription_service, 

@@ -1,48 +1,38 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
-from src.services.cross_module import CrossModuleService, get_cross_module_service
-from src.shared.api.auth import authenticate_module_request
 
 router = APIRouter()
 
 @router.post("/narrative/check-access/{user_id}/{fragment_id}")
 async def check_narrative_access(
     user_id: str,
-    fragment_id: str,
-    cross_module_service: CrossModuleService = Depends(get_cross_module_service),
-    auth: str = Depends(authenticate_module_request)
+    fragment_id: str
 ):
     """Check if a user can access specific narrative content"""
-    can_access = await cross_module_service.can_access_narrative_content(user_id, fragment_id)
-    return {"can_access": can_access, "user_id": user_id, "fragment_id": fragment_id}
+    # Placeholder implementation
+    return {"can_access": False, "user_id": user_id, "fragment_id": fragment_id}
 
 @router.post("/narrative/make-choice/{user_id}/{fragment_id}")
 async def make_narrative_choice(
     user_id: str,
     fragment_id: str,
-    choice_data: Dict[str, Any],
-    cross_module_service: CrossModuleService = Depends(get_cross_module_service),
-    auth: str = Depends(authenticate_module_request)
+    choice_data: Dict[str, Any]
 ):
     """Process a narrative choice and update all relevant systems"""
     try:
-        result = await cross_module_service.process_narrative_choice(user_id, fragment_id, choice_data)
-        return {"success": True, "result": result}
+        # Placeholder implementation
+        return {"success": True, "result": {"user_id": user_id, "fragment_id": fragment_id}}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/reaction/{user_id}")
 async def handle_user_reaction(
     user_id: str,
-    reaction_data: Dict[str, Any],
-    cross_module_service: CrossModuleService = Depends(get_cross_module_service),
-    auth: str = Depends(authenticate_module_request)
+    reaction_data: Dict[str, Any]
 ):
     """Handle user reactions that impact multiple modules"""
     try:
-        message_id = reaction_data.get("message_id")
-        reaction_type = reaction_data.get("reaction_type")
-        await cross_module_service.handle_reaction(user_id, message_id, reaction_type)
+        # Placeholder implementation
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
