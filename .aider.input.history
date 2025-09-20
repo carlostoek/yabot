@@ -1,0 +1,205 @@
+
+# 2025-09-19 14:32:08.489354
++A pesar de que todo parece correcto no responde a ningún comando como /start
++
++Este es el log
++
++2025-09-19 14:29:25 [info     ] Event bus module initialized
++2025-09-19 14:29:25 [info     ] Starting Telegram bot application...
++2025-09-19 14:29:25 [info     ] Initializing bot application
++INFO:src.core.application:Bot application initialized successfully
++INFO:src.core.application:Starting bot application
++INFO:src.core.application:Setting up database connections
++INFO:src.database.manager:DatabaseManager initialized
++INFO:src.database.manager:Initializing connections to all databases
++ERROR:src.database.manager:Error initializing database connections: MONGODB_URI environment variable is required but not set
++ERROR:src.core.application:Failed to connect to databases
++INFO:src.core.application:Setting up event bus
++INFO:src.events.bus:EventBus initialized
++INFO:src.events.bus:Connecting to Redis
++ERROR:src.events.bus:Error connecting to Redis: REDIS_URL environment variable is required but not set
++WARNING:src.core.application:Failed to connect to Redis, events will be queued locally
++INFO:src.core.application:Event bus set up successfully
++INFO:src.core.application:Setting up user service
++INFO:src.services.user:UserService initialized
++INFO:src.core.application:User service set up successfully
++INFO:src.core.application:Setting up API server
++INFO:src.core.application:API server set up successfully
++INFO:src.core.router:Registered command handler for: /start
++INFO:src.core.router:Registered command handler for: /menu
++INFO:src.core.router:Registered command handler for: /help
++INFO:src.core.router:Set default handler
++INFO:src.core.application:Setting up polling mode
++INFO:src.core.application:Configuring polling mode
++INFO:src.core.application:Polling mode configured successfully
++INFO:src.core.application:Polling mode set up successfully
++INFO:src.core.application:Bot application started successfully
++INFO:__main__:Bot application started successfully
+
+# 2025-09-19 14:35:31.197132
++/run export MONGODB_URI="mongodb://localhost:27017"
+
+# 2025-09-19 14:35:31.197197
++/run export MONGODB_URI="mongodb://localhost:27017"
+
+# 2025-09-19 14:35:31.563429
++/run export REDIS_URL="redis://localhost:6379"
+
+# 2025-09-19 14:35:31.563502
++/run export REDIS_URL="redis://localhost:6379"
+
+# 2025-09-19 14:49:42.067284
++Ayúdame con este error 
++Traceback (most recent call last):
++  File "/home/azureuser/repos/yabot/src/main.py", line 11, in <module>
++    from src.core.application import BotApplication
++ModuleNotFoundError: No module named 'src'
+
+# 2025-09-19 14:51:01.892797
++/run cd /home/azureuser/repos/yabot
+
+# 2025-09-19 14:51:01.893017
++/run cd /home/azureuser/repos/yabot
+
+# 2025-09-19 14:51:02.258161
++/run python -m src.main
+
+# 2025-09-19 14:51:02.258317
++/run python -m src.main
+
+# 2025-09-19 14:52:12.414923
++Excelente! Solo que no estaba conociendo los comandos como /start
+
+# 2025-09-19 14:58:02.333095
++/run pip install python-telegram-bot
+
+# 2025-09-19 14:58:02.333192
++/run pip install python-telegram-bot
+
+# 2025-09-19 14:58:14.129446
++/run BOT_TOKEN=your_actual_bot_token_here
+
+# 2025-09-19 14:58:14.129548
++/run BOT_TOKEN=your_actual_bot_token_here
+
+# 2025-09-19 14:58:14.490783
++/run MONGODB_URI=mongodb://localhost:27017
+
+# 2025-09-19 14:58:14.490912
++/run MONGODB_URI=mongodb://localhost:27017
+
+# 2025-09-19 14:58:14.836272
++/run MONGODB_DATABASE=yabot
+
+# 2025-09-19 14:58:14.836363
++/run MONGODB_DATABASE=yabot
+
+# 2025-09-19 14:58:15.201157
++/run REDIS_URL=redis://localhost:6379
+
+# 2025-09-19 14:58:15.201230
++/run REDIS_URL=redis://localhost:6379
+
+# 2025-09-19 15:05:55.597330
++Nuevo errores 
++
++rc.main
++2025-09-19 15:03:23 [info     ] Event bus module initialized
++2025-09-19 15:03:24 [info     ] Starting Telegram bot application...
++2025-09-19 15:03:24 [info     ] Initializing bot application
++INFO:src.core.application:Bot application initialized successfully
++INFO:src.core.application:Starting bot application
++INFO:src.core.application:Setting up database connections
++INFO:src.database.manager:DatabaseManager initialized
++INFO:src.database.manager:Initializing connections to all databases
++INFO:src.database.manager:Connecting to MongoDB at mongodb://localhost:27017
++WARNING:src.database.manager:MongoDB connection attempt 1 failed: localhost:27017: [Errno 111] Connection refused (configured timeouts: socketTimeoutMS: 5000.0ms, connectTimeoutMS: 5000.0ms), Timeout: 5.0s, Topology Description: <TopologyDescription id: 68cd70bc0e72bb214d324730, topology_type: Unknown, servers: [<ServerDescription ('localhost', 27017) server_type: Unknown, rtt: None, error=AutoReconnect('localhost:27017: [Errno 111] Connection refused (configured timeouts: socketTimeoutMS: 5000.0ms, connectTimeoutMS: 5000.0ms)')>]>
++INFO:src.database.manager:Retrying in 1 seconds...
++WARNING:src.database.manager:MongoDB connection attempt 2 failed: localhost:27017: [Errno 111] Connection refused (configured timeouts: socketTimeoutMS: 5000.0ms, connectTimeoutMS: 5000.0ms), Timeout: 5.0s, Topology Description: <TopologyDescription id: 68cd70c20e72bb214d324731, topology_type: Unknown, servers: [<ServerDescription ('localhost', 27017) server_type: Unknown, rtt: None, error=AutoReconnect('localhost:27017: [Errno 111] Connection refused (configured timeouts: socketTimeoutMS: 5000.0ms, connectTimeoutMS: 5000.0ms)')>]>
++INFO:src.database.manager:Retrying in 2 seconds...
++WARNING:src.database.manager:MongoDB connection attempt 3 failed: localhost:27017: [Errno 111] Connection refused (configured timeouts: socketTimeoutMS: 5000.0ms, connectTimeoutMS: 5000.0ms), Timeout: 5.0s, Topology Description: <TopologyDescription id: 68cd70c90e72bb214d324732, topology_type: Unknown, servers: [<ServerDescription ('localhost', 27017) server_type: Unknown, rtt: None, error=AutoReconnect('localhost:27017: [Errno 111] Connection refused (configured timeouts: socketTimeoutMS: 5000.0ms, connectTimeoutMS: 5000.0ms)')>]>
++INFO:src.database.manager:Retrying in 4 seconds...
++WARNING:src.database.manager:MongoDB connection attempt 4 failed: localhost:27017: [Errno 111] Connection refused (configured timeouts: socketTimeoutMS: 5000.0ms, connectTimeoutMS: 5000.0ms), Timeout: 5.0s, Topology Description: <TopologyDescription id: 68cd70d20e72bb214d324733, topology_type: Unknown, servers: [<ServerDescription ('localhost', 27017) server_type: Unknown, rtt: None, error=AutoReconnect('localhost:27017: [Errno 111] Connection refused (configured timeouts: socketTimeoutMS: 5000.0ms, connectTimeoutMS: 5000.0ms)')>]>
++INFO:src.database.manager:Retrying in 8 seconds...
++WARNING:src.database.manager:MongoDB connection attempt 5 failed: localhost:27017: [Errno 111] Connection refused (configured timeouts: socketTimeoutMS: 5000.0ms, connectTimeoutMS: 5000.0ms), Timeout: 5.0s, Topology Description: <TopologyDescription id: 68cd70df0e72bb214d324734, topology_type: Unknown, servers: [<ServerDescription ('localhost', 27017) server_type: Unknown, rtt: None, error=AutoReconnect('localhost:27017: [Errno 111] Connection refused (configured timeouts: socketTimeoutMS: 5000.0ms, connectTimeoutMS: 5000.0ms)')>]>
++ERROR:src.database.manager:Max retries exceeded for MongoDB connection
++WARNING:src.database.manager:Failed to connect to MongoDB, continuing without it
++INFO:src.database.manager:Connecting to SQLite database at yabot.db
++INFO:src.database.manager:Successfully connected to SQLite database
++INFO:src.database.manager:Successfully connected to available databases
++INFO:src.core.application:Database connections set up successfully
++INFO:src.core.application:Setting up event bus
++INFO:src.events.bus:EventBus initialized
++INFO:src.events.bus:Connecting to Redis
++INFO:src.events.bus:Loaded 1000 events from persistence file
++INFO:src.events.bus:Successfully connected to Redis
++WARNING:src.events.bus:Failed to process queued event: Object of type datetime is not JSON serializable
++WARNING:src.events.bus:Failed to process 1 events from local queue
++INFO:src.core.application:Event bus set up successfully
++INFO:src.core.application:Setting up user service
++INFO:src.services.user:UserService initialized
++INFO:src.core.application:User service set up successfully
++INFO:src.core.application:Setting up API server
++INFO:src.core.application:API server set up successfully
++INFO:src.core.router:Registered command handler for: /start
++INFO:src.core.router:Registered command handler for: /menu
++INFO:src.core.router:Registered command handler for: /help
++INFO:src.core.router:Set default handler
++INFO:src.core.application:Setting up polling mode
++INFO:src.core.application:Configuring polling mode
++INFO:src.core.application:Polling mode configured successfully
++INFO:src.core.application:Polling mode set up successfully
++INFO:src.core.application:Bot application started successfully
++INFO:__main__:Bot application started successfully
++WARNING:src.events.bus:Failed to process queued event: Object of type datetime is not JSON serializable
++WARNING:src.events.bus:Failed to process 1 events from local queue
++WARNING:src.events.bus:Failed to process queued event: Object of type datetime is not JSON serializable
++WARNING:src.events.bus:Failed to process 1 events from local queue
++WARNING:src.events.bus:Failed to process queued event: Object of type datetime is not JSON serializable
++WARNING:src.events.bus:Failed to process 1 events from local queue
++WARNING:src.events.bus:Failed to process queued event: Object of type datetime is not JSON serializable
++WARNING:src.events.bus:Failed to process 1 events from local queue
++WARNING:src.events.bus:Failed to process queued event: Object of type datetime is not JSON serializable
++WARNING:src.events.bus:Failed to process 1 events from local queue
++WARNING:src.events.bus:Failed to process queued event: Object of type datetime is not JSON serializable
++WARNING:src.events.bus:Failed to process 1 events from local queue
++WARNING:src.events.bus:Failed to process queued event: Object of type datetime is not JSON serializable
++WARNING:src.events.bus:Failed to process 1 events from local queue
++WARNING:src.events.bus:Failed to process queued event: Object of type datetime is not JSON serializable
++WARNING:src.events.bus:Failed to process 1 events from local queue
++WARNING:src.events.bus:Failed to process queued event: Object of type datetime is not JSON serializable
++WARNING:src.events.bus:Failed to process 1 events from local queue
++WARNING:src.events.bus:Failed to process queued event: Object of type datetime is not JSON serializable
++WARNING:src.events.bus:Failed to process 1 events from local queue
++WARNING:src.events.bus:Failed to process queued event: Object of type datetime is not JSON serializable
++WARNING:src.events.bus:Failed to process 1 events from local queue
++WARNING:src.events.bus:Failed to process queued event: Object of type datetime is not JSON serializable
++WARNING:src.events.bus:Failed to process 1 events from local queue
++WARNING:src.events.bus:Failed to pro
+
+# 2025-09-19 15:10:16.994083
++/run sudo systemctl start mongodb
+
+# 2025-09-19 15:10:16.994152
++/run sudo systemctl start mongodb
+
+# 2025-09-19 15:10:17.382407
++/run sudo systemctl start redis-server
+
+# 2025-09-19 15:10:17.382495
++/run sudo systemctl start redis-server
+
+# 2025-09-19 15:10:17.766716
++/run python -m src.main
+
+# 2025-09-19 15:10:17.766790
++/run python -m src.main
+
+# 2025-09-19 15:11:15.768774
++En este entorno no tengo las bases de datos instaladas, eso podría afectar para que el bot responda los comandos?
+
+# 2025-09-19 15:14:54.395139
++S
+
+# 2025-09-19 15:17:11.387176
++Genial ya estaba arrancando ya puedo interactuar con el bot pero esta mezcla de librerías entre aiogram y Telegram bot no afectará en el desarrollo futuro?

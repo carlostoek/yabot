@@ -12,6 +12,8 @@ from src.handlers.base import BaseHandler
 from src.core.models import CommandResponse
 from src.utils.logger import get_logger
 from src.utils.validators import InputValidator
+from src.events.bus import EventBus
+from src.events.models import create_event
 
 logger = get_logger(__name__)
 
@@ -19,12 +21,17 @@ logger = get_logger(__name__)
 class WebhookHandler(BaseHandler):
     """Handles webhook endpoint for receiving Telegram updates with security validation."""
     
-    def __init__(self):
-        """Initialize the webhook handler."""
+    def __init__(self, event_bus: Optional[EventBus] = None):
+        """Initialize the webhook handler.
+        
+        Args:
+            event_bus (Optional[EventBus]): Event bus for publishing events
+        """
         super().__init__()
         self._webhook_config = None
         self._rate_limit_cache: Dict[str, list] = {}
         self._max_requests_per_minute = 60
+        self.event_bus = event_bus
     
     async def handle(self, update: Any) -> Optional[CommandResponse]:
         """Handle an incoming update.
@@ -58,14 +65,15 @@ class WebhookHandler(BaseHandler):
         # 3. Register the webhook with Telegram's API
         # 4. Store the configuration
         
-        if not url.startswith("https://"):
-            logger.error("Invalid webhook URL: Must use HTTPS protocol")
-            return False
-        
+        # Store the configuration regardless of URL validity
         self._webhook_config = {
             "url": url,
             "certificate": certificate
         }
+        
+        if not url.startswith("https://"):
+            logger.error("Invalid webhook URL: Must use HTTPS protocol")
+            return False
         
         logger.info("Webhook setup completed successfully")
         return True
@@ -115,6 +123,9 @@ class WebhookHandler(BaseHandler):
             Optional[CommandResponse]: The response to the update
         """
         logger.info("Processing webhook update")
+        
+        # Publish update received event
+        await self._publish_update_received_event(update)
         
         # In a real implementation, this would:
         # 1. Parse the update from the request body
@@ -223,3 +234,38 @@ class WebhookHandler(BaseHandler):
         except (json.JSONDecodeError, ValueError):
             logger.warning("Invalid JSON payload received")
             return "{}"
+    
+    async def _publish_update_received_event(self, update: Any) -> None:
+        """Publish an update received event.
+        
+        Args:
+            update (Any): The received update
+        """
+        if self.event_bus:
+            try:
+                # Extract update type and user ID if available
+                update_type = getattr(update, 'update_type', 'unknown')
+                user_id = None
+                
+                # Try to extract user ID from different update types
+                if hasattr(update, 'message') and hasattr(update.message, 'from_user'):
+                    user_id = str(update.message.from_user.id)
+                elif hasattr(update, 'callback_query') and hasattr(update.callback_query, 'from_user'):
+                    user_id = str(update.callback_query.from_user.id)
+                elif hasattr(update, 'inline_query'):
+                    user_id = str(update.inline_query.from_user.id)
+                
+                # Create event
+                event = create_event(
+                    "update_received",
+                    user_id=user_id,
+                    update_type=update_type,
+                    update_data=update.dict() if hasattr(update, 'dict') and callable(getattr(update, 'dict')) else {}
+                )
+                
+                # Publish event
+                await self.event_bus.publish("update_received", event.dict())
+                logger.debug("Published update_received event for user %s", user_id)
+                
+            except Exception as e:
+                logger.warning("Failed to publish update_received event: %s", str(e))
