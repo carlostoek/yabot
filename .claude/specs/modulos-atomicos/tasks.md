@@ -41,7 +41,7 @@ Tasks follow existing YABOT patterns:
 
 ### Phase 1: Enhanced Event System Foundation
 
-- [ ] 1. Add narrative event models in src/events/models.py
+- [x] 1. Add narrative event models in src/events/models.py
   - File: src/events/models.py
   - Add DecisionMadeEvent, FragmentUnlockedEvent, HintUnlockedEvent, NarrativeCompletedEvent
   - Add correlation_id field to BaseEvent for event ordering
@@ -73,7 +73,7 @@ Tasks follow existing YABOT patterns:
   - _Leverage: Existing error event patterns_
   - _Requirements: 4.7, 5.5, 5.6_
 
-- [ ] 2. Create event correlation service in src/shared/events/correlation.py
+- [x] 2. Create event correlation service in src/shared/events/correlation.py
   - File: src/shared/events/correlation.py
   - Implement CorrelationService for event ordering and tracking
   - Add methods: generate_correlation_id(), track_event(), get_event_sequence()
@@ -82,7 +82,7 @@ Tasks follow existing YABOT patterns:
   - _Leverage: Redis patterns from existing caching_
   - _Requirements: 4.6, 4.8, 4.9_
 
-- [ ] 3. Enhance event bus with retry mechanism in src/events/bus.py
+- [x] 3. Enhance event bus with retry mechanism in src/events/bus.py
   - File: src/events/bus.py
   - Add exponential backoff retry logic (3 attempts max)
   - Implement dead letter queue for failed events
@@ -93,7 +93,7 @@ Tasks follow existing YABOT patterns:
 
 ### Phase 2: Database Schema Extensions
 
-- [ ] 4. Create narrative collections schema in src/database/schemas/narrative.py
+- [x] 4. Create narrative collections schema in src/database/schemas/narrative.py
   - File: src/database/schemas/narrative.py
   - Define NarrativeFragmentSchema with choices and VIP flags
   - Add indexes for fragment_id, vip_required, tags
@@ -102,7 +102,7 @@ Tasks follow existing YABOT patterns:
   - _Leverage: src/database/schemas/mongo.py patterns_
   - _Requirements: 1.1, 1.4, 6.1_
 
-- [ ] 5. Create gamification collections schema in src/database/schemas/gamification.py
+- [x] 5. Create gamification collections schema in src/database/schemas/gamification.py
   - File: src/database/schemas/gamification.py
   - Define schemas for besitos_transactions, missions, items, auctions
   - Add compound indexes for user_id + timestamp queries
@@ -111,7 +111,7 @@ Tasks follow existing YABOT patterns:
   - _Leverage: MongoDB transaction patterns_
   - _Requirements: 2.1, 2.2, 2.6, 6.5_
 
-- [ ] 6. Extend users collection schema in src/database/schemas/mongo.py
+- [x] 6. Extend users collection schema in src/database/schemas/mongo.py
   - File: src/database/schemas/mongo.py (modify existing)
   - Add narrative_progress, besitos_balance, subscription fields
   - Create compound indexes for performance requirements
@@ -122,7 +122,7 @@ Tasks follow existing YABOT patterns:
 
 ### Phase 3: Narrative Immersion Module
 
-- [ ] 7. Create narrative fragment manager in src/modules/narrative/fragment_manager.py
+- [x] 7. Create narrative fragment manager in src/modules/narrative/fragment_manager.py
   - File: src/modules/narrative/fragment_manager.py
   - Implement FragmentManager class with get_fragment(), update_progress()
   - Add VIP validation logic using coordinator service
@@ -131,7 +131,7 @@ Tasks follow existing YABOT patterns:
   - _Leverage: src/database/mongodb.py collection patterns_
   - _Requirements: 1.1, 1.4, 1.5_
 
-- [ ] 8. Create decision engine in src/modules/narrative/decision_engine.py
+- [x] 8. Create decision engine in src/modules/narrative/decision_engine.py
   - File: src/modules/narrative/decision_engine.py
   - Implement DecisionEngine with process_decision(), validate_choice()
   - Add decision graph logic for narrative branching
@@ -140,7 +140,7 @@ Tasks follow existing YABOT patterns:
   - _Leverage: Event bus publishing patterns_
   - _Requirements: 1.2, 1.5, 4.4_
 
-- [ ] 9. Create hint system in src/modules/narrative/hint_system.py
+- [x] 9. Create hint system in src/modules/narrative/hint_system.py
   - File: src/modules/narrative/hint_system.py
   - Implement HintSystem with unlock_hint(), combine_hints()
   - Add cross-module API calls to gamification mochila
@@ -149,7 +149,7 @@ Tasks follow existing YABOT patterns:
   - _Leverage: Cross-module API patterns_
   - _Requirements: 1.3, 4.3_
 
-- [ ] 10. Create Lucien messenger in src/modules/narrative/lucien_messenger.py
+- [x] 10. Create Lucien messenger in src/modules/narrative/lucien_messenger.py
   - File: src/modules/narrative/lucien_messenger.py
   - Implement LucienMessenger with send_message(), schedule_message()
   - Add dynamic template rendering with user context
@@ -160,7 +160,7 @@ Tasks follow existing YABOT patterns:
 
 ### Phase 4: Gamification Module Core
 
-- [ ] 11. Create besitos wallet in src/modules/gamification/besitos_wallet.py
+- [x] 11. Create besitos wallet in src/modules/gamification/besitos_wallet.py
   - File: src/modules/gamification/besitos_wallet.py
   - Implement BesitosWallet with add_besitos(), spend_besitos(), get_balance()
   - Add atomic transaction support with MongoDB sessions
@@ -169,7 +169,7 @@ Tasks follow existing YABOT patterns:
   - _Leverage: MongoDB transaction patterns_
   - _Requirements: 2.1, 2.2, 6.5_
 
-- [ ] 12. Create mission manager in src/modules/gamification/mission_manager.py
+- [x] 12. Create mission manager in src/modules/gamification/mission_manager.py
   - File: src/modules/gamification/mission_manager.py
   - Implement MissionManager with assign_mission(), update_progress(), complete_mission()
   - Add mission type definitions and progress tracking
@@ -178,7 +178,7 @@ Tasks follow existing YABOT patterns:
   - _Leverage: Event bus subscription patterns_
   - _Requirements: 2.3, 2.4, 4.4_
 
-- [ ] 13. Create item manager (mochila) in src/modules/gamification/item_manager.py
+- [x] 13. Create item manager (mochila) in src/modules/gamification/item_manager.py
   - File: src/modules/gamification/item_manager.py
   - Implement ItemManager with add_item(), remove_item(), get_inventory()
   - Add CRUD API endpoints for cross-module access
@@ -187,7 +187,7 @@ Tasks follow existing YABOT patterns:
   - _Leverage: MongoDB CRUD patterns_
   - _Requirements: 2.6, 7.1_
 
-- [ ] 14. Create reaction detector in src/modules/gamification/reaction_detector.py
+- [x] 14. Create reaction detector in src/modules/gamification/reaction_detector.py
   - File: src/modules/gamification/reaction_detector.py
   - Implement ReactionDetector with process_reaction()
   - Add Telegram webhook handling for reaction events
@@ -198,7 +198,7 @@ Tasks follow existing YABOT patterns:
 
 ### Phase 5: Gamification Module Advanced Features
 
-- [ ] 15. Create store (tienda) system in src/modules/gamification/store.py
+- [x] 15. Create store (tienda) system in src/modules/gamification/store.py
   - File: src/modules/gamification/store.py
   - Implement Store with browse_items(), purchase_item()
   - Add Telegram inline menu generation and callback handling
@@ -207,7 +207,7 @@ Tasks follow existing YABOT patterns:
   - _Leverage: Telegram inline keyboard patterns_
   - _Requirements: 2.7_
 
-- [ ] 16. Create auction system in src/modules/gamification/auction_system.py
+- [x] 16. Create auction system in src/modules/gamification/auction_system.py
   - File: src/modules/gamification/auction_system.py
   - Implement AuctionSystem with create_auction(), place_bid(), close_auction()
   - Add Redis timer management and automatic closure
@@ -216,7 +216,7 @@ Tasks follow existing YABOT patterns:
   - _Leverage: Redis TTL patterns_
   - _Requirements: 2.8_
 
-- [ ] 17. Create trivia engine in src/modules/gamification/trivia_engine.py
+- [x] 17. Create trivia engine in src/modules/gamification/trivia_engine.py
   - File: src/modules/gamification/trivia_engine.py
   - Implement TriviaEngine with create_trivia(), process_answer()
   - Add Telegram poll creation and result processing

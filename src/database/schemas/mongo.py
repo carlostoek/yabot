@@ -24,11 +24,55 @@ class UserPreferences(BaseModel):
     theme: Optional[str] = "default"
 
 
+class SubscriptionInfo(BaseModel):
+    """User subscription information for VIP status management."""
+    is_vip: Optional[bool] = False
+    subscription_type: Optional[str] = None  # "monthly", "yearly", "lifetime"
+    subscription_start: Optional[datetime] = None
+    subscription_end: Optional[datetime] = None
+    auto_renewal: Optional[bool] = False
+
+
+class GamificationStats(BaseModel):
+    """User gamification statistics."""
+    level: Optional[int] = 1
+    experience_points: Optional[int] = 0
+    achievements: Optional[List[str]] = Field(default_factory=list)
+    badges: Optional[List[str]] = Field(default_factory=list)
+    daily_streak: Optional[int] = 0
+    last_activity: Optional[datetime] = None
+
+
+class AdminInfo(BaseModel):
+    """Administrative information for user management."""
+    is_admin: Optional[bool] = False
+    permissions: Optional[List[str]] = Field(default_factory=list)
+    moderation_flags: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    last_login: Optional[datetime] = None
+
+
 class User(BaseModel):
     """User document model for the Users collection."""
     user_id: str = Field(..., description="Telegram user ID (primary key)")
     current_state: Optional[UserState] = None
     preferences: Optional[UserPreferences] = None
+
+    # Virtual currency and economy
+    besitos_balance: Optional[int] = Field(default=0, description="User's besitos balance for virtual currency")
+
+    # Subscription and VIP management
+    subscription: Optional[SubscriptionInfo] = None
+
+    # Gamification features
+    gamification: Optional[GamificationStats] = None
+
+    # Administrative information
+    admin: Optional[AdminInfo] = None
+
+    # Inventory and items
+    inventory: Optional[Dict[str, int]] = Field(default_factory=dict, description="User's item inventory with quantities")
+
+    # Timestamps
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
