@@ -130,6 +130,9 @@ def test_besitos_awarded_event():
         user_id="12345",
         amount=10,
         reason="reaction_reward",
+        source="reaction",
+        balance_after=100,
+        transaction_id="txn_001",
         metadata={"content_id": "content_001"}
     )
     
@@ -214,8 +217,9 @@ def test_update_received_event():
 def test_event_models_dict():
     """Test EVENT_MODELS dictionary."""
     assert isinstance(EVENT_MODELS, dict)
-    assert len(EVENT_MODELS) == 11
+    assert len(EVENT_MODELS) == 34
     
+    # Check that some key models are present
     expected_types = [
         "user_interaction",
         "reaction_detected", 

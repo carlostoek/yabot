@@ -71,6 +71,68 @@ def mock_webhook_handler():
 
 
 @pytest.fixture
+def mock_database_manager():
+    """Create a mock database manager for testing."""
+    from tests.utils.database import MockDatabaseManager
+    return MockDatabaseManager()
+
+
+@pytest.fixture
+def database_test_config():
+    """Create a database test configuration for testing."""
+    from tests.utils.database import DatabaseTestConfig
+    return DatabaseTestConfig
+
+
+@pytest.fixture
+def database_test_data_factory():
+    """Create a database test data factory for testing."""
+    from tests.utils.database import DatabaseTestDataFactory
+    return DatabaseTestDataFactory()
+
+
+@pytest.fixture
+def database_test_helpers():
+    """Create database test helpers for testing."""
+    from tests.utils.database import DatabaseTestHelpers
+    return DatabaseTestHelpers()
+
+
+@pytest.fixture
+def temp_database_path(tmp_path):
+    """Create a temporary database path for testing."""
+    return str(tmp_path / "test_database.db")
+
+
+@pytest.fixture
+def mock_event_bus():
+    """Create a mock event bus for testing."""
+    from tests.utils.events import MockEventBus
+    return MockEventBus()
+
+
+@pytest.fixture
+def event_test_config():
+    """Create an event test configuration for testing."""
+    from tests.utils.events import EventTestConfig
+    return EventTestConfig
+
+
+@pytest.fixture
+def event_test_data_factory():
+    """Create an event test data factory for testing."""
+    from tests.utils.events import EventTestDataFactory
+    return EventTestDataFactory()
+
+
+@pytest.fixture
+def event_test_helpers():
+    """Create event test helpers for testing."""
+    from tests.utils.events import EventTestHelpers
+    return EventTestHelpers()
+
+
+@pytest.fixture
 def sample_update():
     """Create a sample update for testing."""
     update = Mock()

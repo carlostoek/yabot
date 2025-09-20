@@ -368,6 +368,37 @@ class WorkflowFailedEvent(BaseEvent):
     recovery_actions: List[str] = Field(default_factory=list, description="Suggested recovery actions")
 
 
+class EmotionalSignatureUpdatedEvent(BaseEvent):
+    """Event published when user's emotional signature is updated."""
+
+    archetype: str = Field(..., description="User's emotional archetype")
+    authenticity_score: float = Field(..., description="Authenticity score (0.0-1.0)")
+    signature_strength: float = Field(..., description="Classification confidence")
+    previous_archetype: Optional[str] = Field(None, description="Previous archetype if changed")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional signature metadata")
+
+
+class DianaLevelProgressionEvent(BaseEvent):
+    """Event published when user advances to new Diana level."""
+
+    previous_level: int = Field(..., description="Previous Diana level")
+    new_level: int = Field(..., description="New Diana level")
+    progression_reason: str = Field(..., description="Reason for level advancement")
+    emotional_metrics: Dict[str, Any] = Field(..., description="Emotional metrics that triggered progression")
+    vip_access_required: bool = Field(..., description="Whether VIP access is required for this level")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional progression metadata")
+
+
+class EmotionalMilestoneReachedEvent(BaseEvent):
+    """Event published when user reaches emotional milestone."""
+
+    milestone_type: str = Field(..., description="Type of emotional milestone")
+    milestone_data: Dict[str, Any] = Field(..., description="Milestone-specific data")
+    reward_besitos: int = Field(default=0, description="Besitos reward for milestone")
+    unlock_content: Optional[str] = Field(None, description="Content unlocked by milestone")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional milestone metadata")
+
+
 # Event type constants for easy reference
 EVENT_MODELS = {
     "user_interaction": UserInteractionEvent,
@@ -405,7 +436,11 @@ EVENT_MODELS = {
     "workflow_execution_started": WorkflowExecutionStartedEvent,
     "workflow_step_completed": WorkflowStepCompletedEvent,
     "workflow_completed": WorkflowCompletedEvent,
-    "workflow_failed": WorkflowFailedEvent
+    "workflow_failed": WorkflowFailedEvent,
+    # Emotional events
+    "emotional_signature_updated": EmotionalSignatureUpdatedEvent,
+    "diana_level_progression": DianaLevelProgressionEvent,
+    "emotional_milestone_reached": EmotionalMilestoneReachedEvent,
 }
 
 

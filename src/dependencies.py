@@ -5,6 +5,7 @@ from aiogram import Bot
 import redis.asyncio as redis
 from pymongo import MongoClient
 
+from src.config.manager import ConfigManager
 from src.database.mongodb import MongoDBHandler
 from src.events.bus import EventBus
 from src.modules.narrative.fragment_manager import NarrativeFragmentManager

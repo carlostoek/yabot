@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from src.modules.admin.subscription_manager import SubscriptionManager, Subscription, VipStatus, ExpiredSubscription
 from src.events.bus import EventBus
-from src.events.models import Event
+from src.events.models import BaseEvent
 
 
 @pytest.fixture

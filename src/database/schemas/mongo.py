@@ -51,6 +51,32 @@ class AdminInfo(BaseModel):
     last_login: Optional[datetime] = None
 
 
+class EmotionalSignature(BaseModel):
+    """User emotional signature and archetype data."""
+    archetype: Optional[str] = None  # EXPLORADOR_PROFUNDO, DIRECTO_AUTENTICO, etc.
+    authenticity_score: Optional[float] = 0.0
+    vulnerability_level: Optional[float] = 0.0
+    response_patterns: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    signature_strength: Optional[float] = 0.0
+    last_analysis: Optional[datetime] = None
+    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    updated_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+
+
+class EmotionalJourney(BaseModel):
+    """User emotional journey and Diana level progression."""
+    current_level: Optional[int] = 1
+    level_entry_date: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    progression_history: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
+    emotional_milestones: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
+    vip_integration_status: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    circle_intimo_access: Optional[bool] = False
+    relationship_depth_score: Optional[float] = 0.0
+    last_progression_check: Optional[datetime] = None
+    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    updated_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+
+
 class User(BaseModel):
     """User document model for the Users collection."""
     user_id: str = Field(..., description="Telegram user ID (primary key)")
@@ -68,6 +94,10 @@ class User(BaseModel):
 
     # Administrative information
     admin: Optional[AdminInfo] = None
+
+    # Emotional intelligence fields
+    emotional_signature: Optional[EmotionalSignature] = None
+    emotional_journey: Optional[EmotionalJourney] = None
 
     # Inventory and items
     inventory: Optional[Dict[str, int]] = Field(default_factory=dict, description="User's item inventory with quantities")

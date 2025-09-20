@@ -22,7 +22,7 @@ from src.modules.admin.access_control import AccessControl
 from src.modules.admin.subscription_manager import SubscriptionManager
 from src.modules.admin.post_scheduler import PostScheduler
 from src.modules.admin.notification_system import NotificationSystem
-from src.modules.admin.admin_commands import AdminCommandInterface
+from src.modules.admin.admin_commands import AdminCommandHandler as AdminCommandInterface
 
 from src.events.bus import EventBus
 from src.database.mongodb import MongoDBHandler
