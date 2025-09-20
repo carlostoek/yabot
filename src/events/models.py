@@ -140,6 +140,14 @@ class UserDeletedEvent(BaseEvent):
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional deletion metadata")
 
 
+class UserUpdatedEvent(BaseEvent):
+    """Event published when a user is updated."""
+    
+    update_type: str = Field(..., description="Type of update (profile, state, etc.)")
+    updated_fields: Dict[str, Any] = Field(default_factory=dict, description="Fields that were updated")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional update metadata")
+
+
 class UpdateReceivedEvent(BaseEvent):
     """Event published when an update is received from Telegram."""
     
@@ -287,6 +295,79 @@ class NotificationSentEvent(BaseEvent):
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional notification metadata")
 
 
+class WorkflowStep(BaseModel):
+    """Definition of a single step in a workflow."""
+    
+    step_id: str = Field(..., description="Unique identifier for the workflow step")
+    name: str = Field(..., description="Name of the workflow step")
+    description: Optional[str] = Field(None, description="Description of the workflow step")
+    service: str = Field(..., description="Service responsible for executing this step")
+    action: str = Field(..., description="Action to be performed by the service")
+    parameters: Dict[str, Any] = Field(default_factory=dict, description="Parameters for the action")
+    timeout_seconds: int = Field(default=30, description="Timeout for step execution in seconds")
+    retry_count: int = Field(default=0, description="Number of retries allowed for this step")
+    dependencies: List[str] = Field(default_factory=list, description="List of step IDs that must complete before this step")
+    conditions: Dict[str, Any] = Field(default_factory=dict, description="Conditions that must be met for step execution")
+    expected_outcome: Optional[str] = Field(None, description="Expected outcome of the step")
+
+
+class WorkflowDefinition(BaseEvent):
+    """Definition of a complete workflow."""
+    
+    workflow_id: str = Field(..., description="Unique identifier for the workflow")
+    name: str = Field(..., description="Name of the workflow")
+    description: Optional[str] = Field(None, description="Description of the workflow")
+    version: str = Field(default="1.0.0", description="Version of the workflow definition")
+    steps: List[WorkflowStep] = Field(default_factory=list, description="Ordered list of workflow steps")
+    trigger_event: Optional[str] = Field(None, description="Event that triggers this workflow")
+    timeout_seconds: int = Field(default=300, description="Overall timeout for workflow execution in seconds")
+    retry_policy: Dict[str, Any] = Field(default_factory=dict, description="Retry policy for the entire workflow")
+    error_handling: Dict[str, Any] = Field(default_factory=dict, description="Error handling strategy")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional workflow metadata")
+
+
+class WorkflowExecutionStartedEvent(BaseEvent):
+    """Event published when a workflow execution starts."""
+    
+    workflow_id: str = Field(..., description="ID of the workflow being executed")
+    workflow_name: str = Field(..., description="Name of the workflow being executed")
+    trigger_event_id: Optional[str] = Field(None, description="ID of the event that triggered the workflow")
+    context: Dict[str, Any] = Field(default_factory=dict, description="Execution context")
+
+
+class WorkflowStepCompletedEvent(BaseEvent):
+    """Event published when a workflow step completes."""
+    
+    workflow_id: str = Field(..., description="ID of the workflow")
+    step_id: str = Field(..., description="ID of the completed step")
+    step_name: str = Field(..., description="Name of the completed step")
+    outcome: str = Field(..., description="Outcome of the step execution")
+    result_data: Dict[str, Any] = Field(default_factory=dict, description="Result data from the step")
+    execution_time_ms: int = Field(..., description="Execution time in milliseconds")
+
+
+class WorkflowCompletedEvent(BaseEvent):
+    """Event published when a workflow completes."""
+    
+    workflow_id: str = Field(..., description="ID of the completed workflow")
+    workflow_name: str = Field(..., description="Name of the completed workflow")
+    status: str = Field(..., description="Final status of the workflow (success, failed, timeout)")
+    total_execution_time_ms: int = Field(..., description="Total execution time in milliseconds")
+    steps_executed: int = Field(..., description="Number of steps executed")
+    result_data: Dict[str, Any] = Field(default_factory=dict, description="Final result data from the workflow")
+
+
+class WorkflowFailedEvent(BaseEvent):
+    """Event published when a workflow fails."""
+    
+    workflow_id: str = Field(..., description="ID of the failed workflow")
+    workflow_name: str = Field(..., description="Name of the failed workflow")
+    failure_step_id: Optional[str] = Field(None, description="ID of the step where failure occurred")
+    failure_reason: str = Field(..., description="Reason for workflow failure")
+    error_details: Dict[str, Any] = Field(default_factory=dict, description="Detailed error information")
+    recovery_actions: List[str] = Field(default_factory=list, description="Suggested recovery actions")
+
+
 # Event type constants for easy reference
 EVENT_MODELS = {
     "user_interaction": UserInteractionEvent,
@@ -302,6 +383,7 @@ EVENT_MODELS = {
     "vip_access_granted": VipAccessGrantedEvent,
     "user_registered": UserRegisteredEvent,
     "user_deleted": UserDeletedEvent,
+    "user_updated": UserUpdatedEvent,
     "update_received": UpdateReceivedEvent,
     "event_processing_failed": EventProcessingFailedEvent,
     # System resilience events
@@ -317,7 +399,13 @@ EVENT_MODELS = {
     "module_restart": ModuleRestartEvent,
     "daily_gift_claimed": DailyGiftClaimedEvent,
     "post_scheduled": PostScheduledEvent,
-    "notification_sent": NotificationSentEvent
+    "notification_sent": NotificationSentEvent,
+    # Workflow events
+    "workflow_definition": WorkflowDefinition,
+    "workflow_execution_started": WorkflowExecutionStartedEvent,
+    "workflow_step_completed": WorkflowStepCompletedEvent,
+    "workflow_completed": WorkflowCompletedEvent,
+    "workflow_failed": WorkflowFailedEvent
 }
 
 

@@ -14,10 +14,10 @@ from pymongo.errors import PyMongoError
 
 from src.database.mongodb import MongoDBHandler
 from src.database.schemas.gamification import (
-    BesitosTransaction, TransactionType, TransactionStatus,
-    BesitosAddedEvent, BesitosSpentEvent
+    BesitosTransaction, TransactionType, TransactionStatus
 )
 from src.events.bus import EventBus
+from src.events.models import BesitosAwardedEvent, BesitosSpentEvent, create_event
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -391,21 +391,22 @@ class BesitosWallet:
             balance_after: User balance after transaction
         """
         try:
-            event = BesitosAddedEvent(
+            event = create_event(
+                "besitos_awarded",
                 user_id=user_id,
-                transaction_id=transaction_id,
                 amount=amount,
                 reason=reason,
                 source=source,
-                balance_after=balance_after
+                balance_after=balance_after,
+                transaction_id=transaction_id
             )
 
-            await self.event_bus.publish("besitos_added", event.dict())
-            logger.debug("Published besitos_added event for user %s", user_id)
+            await self.event_bus.publish("besitos_awarded", event.dict())
+            logger.debug("Published besitos_awarded event for user %s", user_id)
 
         except Exception as e:
             # Don't fail the transaction for event publishing errors
-            logger.warning("Failed to publish besitos_added event for user %s: %s", user_id, str(e))
+            logger.warning("Failed to publish besitos_awarded event for user %s: %s", user_id, str(e))
 
     async def _publish_besitos_spent_event(self, user_id: str, transaction_id: str,
                                           amount: int, reason: str, item_id: Optional[str],
@@ -421,13 +422,14 @@ class BesitosWallet:
             balance_after: User balance after transaction
         """
         try:
-            event = BesitosSpentEvent(
+            event = create_event(
+                "besitos_spent",
                 user_id=user_id,
-                transaction_id=transaction_id,
                 amount=amount,
                 reason=reason,
                 item_id=item_id,
-                balance_after=balance_after
+                balance_after=balance_after,
+                transaction_id=transaction_id
             )
 
             await self.event_bus.publish("besitos_spent", event.dict())

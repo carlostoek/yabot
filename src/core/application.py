@@ -20,6 +20,7 @@ from src.database.manager import DatabaseManager
 from src.events.bus import EventBus
 from src.services.user import UserService
 from src.api.server import APIServer  # Added for API server initialization
+from src.shared.registry.module_registry import ModuleRegistry, ModuleState, ModuleHealthStatus
 
 logger = get_logger(__name__)
 
@@ -41,6 +42,7 @@ class BotApplication:
         self.database_manager: Optional[DatabaseManager] = None
         self.event_bus: Optional[EventBus] = None
         self.user_service: Optional[UserService] = None
+        self.module_registry: Optional[ModuleRegistry] = None
         
         # Initialize API server (will be set up during start)
         self.api_server: Optional[APIServer] = None
@@ -90,6 +92,12 @@ class BotApplication:
             await self._setup_database()
             await self._setup_event_bus()
             
+            # Set up module registry after event bus is initialized
+            await self._setup_module_registry()
+            
+            # Register core services with the module registry
+            await self._register_core_services()
+            
             # Set up user service after database and event bus
             await self._setup_user_service()
             
@@ -114,6 +122,9 @@ class BotApplication:
             if not success:
                 logger.error("Failed to set up update receiving mode")
                 return False
+            
+            # Update module states to running
+            await self._update_module_states_to_running()
             
             self._is_running = True
             logger.info("Bot application started successfully")
@@ -407,6 +418,147 @@ class BotApplication:
             }
             user_message = await self.error_handler.handle_error(e, error_context)
             logger.error("Error setting up event bus: %s", user_message)
+            return False
+    
+    async def _setup_module_registry(self) -> bool:
+        """Initialize module registry for dependency management.
+        
+        Returns:
+            bool: True if module registry setup was successful, False otherwise
+        """
+        logger.info("Setting up module registry")
+        
+        try:
+            # Initialize module registry with event bus
+            if self.event_bus:
+                self.module_registry = ModuleRegistry(self.event_bus)
+                logger.info("Module registry set up successfully")
+                return True
+            else:
+                logger.warning("Event bus not initialized, cannot set up module registry")
+                return False
+                
+        except Exception as e:
+            error_context = {
+                "operation": "setup_module_registry",
+                "component": "BotApplication"
+            }
+            user_message = await self.error_handler.handle_error(e, error_context)
+            logger.error("Error setting up module registry: %s", user_message)
+            return False
+    
+    async def _register_core_services(self) -> bool:
+        """Register core services with the module registry.
+        
+        Returns:
+            bool: True if core services were registered successfully, False otherwise
+        """
+        logger.info("Registering core services with module registry")
+        
+        try:
+            if not self.module_registry:
+                logger.warning("Module registry not initialized, cannot register core services")
+                return False
+            
+            # Register core services in dependency order
+            # Config service
+            self.module_registry.register_module(
+                name="config",
+                module_type="core",
+                version="1.0.0",
+                dependencies=[]
+            )
+            
+            # Database service
+            if self.database_manager:
+                self.module_registry.register_module(
+                    name="database",
+                    module_type="core",
+                    version="1.0.0",
+                    dependencies=["config"]
+                )
+            
+            # Event bus service
+            if self.event_bus:
+                self.module_registry.register_module(
+                    name="event_bus",
+                    module_type="core",
+                    version="1.0.0",
+                    dependencies=["config"]
+                )
+            
+            # User service
+            if self.user_service:
+                self.module_registry.register_module(
+                    name="user_service",
+                    module_type="service",
+                    version="1.0.0",
+                    dependencies=["database", "event_bus"]
+                )
+            
+            # Router service
+            self.module_registry.register_module(
+                name="router",
+                module_type="core",
+                version="1.0.0",
+                dependencies=["user_service"]
+            )
+            
+            # Middleware service
+            self.module_registry.register_module(
+                name="middleware",
+                module_type="core",
+                version="1.0.0",
+                dependencies=["router"]
+            )
+            
+            # Error handler service
+            self.module_registry.register_module(
+                name="error_handler",
+                module_type="core",
+                version="1.0.0",
+                dependencies=[]
+            )
+            
+            logger.info("Core services registered with module registry successfully")
+            return True
+            
+        except Exception as e:
+            error_context = {
+                "operation": "register_core_services",
+                "component": "BotApplication"
+            }
+            user_message = await self.error_handler.handle_error(e, error_context)
+            logger.error("Error registering core services: %s", user_message)
+            return False
+    
+    async def _update_module_states_to_running(self) -> bool:
+        """Update all registered modules to running state.
+        
+        Returns:
+            bool: True if module states were updated successfully, False otherwise
+        """
+        logger.info("Updating module states to running")
+        
+        try:
+            if not self.module_registry:
+                logger.warning("Module registry not initialized, cannot update module states")
+                return False
+            
+            # Update all registered modules to running state
+            for module_name in self.module_registry.modules.keys():
+                self.module_registry.update_module_state(module_name, ModuleState.RUNNING)
+            
+            logger.info("Module states updated to running successfully")
+            return True
+            
+        except Exception as e:
+            error_context = {
+                "operation": "update_module_states_to_running",
+                "component": "BotApplication"
+            }
+            user_message = await self.error_handler.handle_error(e, error_context)
+            logger.error("Error updating module states: %s", user_message)
             return False
     
     async def _setup_user_service(self) -> bool:

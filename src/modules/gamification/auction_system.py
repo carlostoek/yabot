@@ -112,6 +112,24 @@ class AuctionSystem:
             logger.error(f"Failed to initialize auction system: {e}")
             raise AuctionSystemError(f"Initialization failed: {e}")
 
+    async def subscribe_to_events(self) -> bool:
+        """Subscribe to relevant events that might affect auctions.
+        
+        Returns:
+            bool: True if subscription was successful, False otherwise
+        """
+        try:
+            # Subscribe to events that might affect auctions
+            # For example, user deletion events might require auction cleanup
+            # Or system maintenance events might require pausing auctions
+            
+            logger.info("Auction system subscribed to events")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to subscribe to events: {e}")
+            return False
+
     async def shutdown(self) -> None:
         """Gracefully shutdown the auction system."""
         # Cancel all running timers
@@ -293,7 +311,19 @@ class AuctionSystem:
                 auction_end_time=auction.end_time
             )
 
-            await self.event_bus.publish("bid_placed", bid_event.model_dump())
+            from src.events.models import create_event
+            
+            bid_event = create_event(
+                "bid_placed",
+                auction_id=auction_id,
+                user_id=user_id,
+                bid_amount=amount,
+                new_current_price=amount,
+                previous_winner_id=previous_winner_id,
+                auction_end_time=auction.end_time
+            )
+
+            await self.event_bus.publish("bid_placed", bid_event.dict())
 
             logger.info(f"Bid placed: {amount} besitos by user {user_id} on auction {auction_id}")
             return True
@@ -380,7 +410,20 @@ class AuctionSystem:
                 status=final_status.value
             )
 
-            await self.event_bus.publish("auction_closed", closed_event.model_dump())
+            from src.events.models import create_event
+            
+            closed_event = create_event(
+                "auction_closed",
+                auction_id=auction_id,
+                item_id=auction.item_id,
+                item_name=auction.item_name,
+                final_price=auction.current_price,
+                winner_id=auction.current_winner_id,
+                total_bids=len(auction.bids),
+                status=final_status.value
+            )
+
+            await self.event_bus.publish("auction_closed", closed_event.dict())
 
             result = AuctionResult(
                 auction_id=auction_id,

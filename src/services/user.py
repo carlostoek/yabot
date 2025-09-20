@@ -367,6 +367,17 @@ class UserService:
             success = result.modified_count > 0
             if success:
                 logger.info("Successfully updated user state for user: %s", user_id)
+                # Publish user_updated event for state changes
+                try:
+                    event = create_event(
+                        "user_updated",
+                        user_id=user_id,
+                        update_type="state",
+                        updated_fields=state_updates
+                    )
+                    await self.event_bus.publish("user_updated", event.dict())
+                except Exception as e:
+                    logger.warning("Failed to publish user_updated event for state change: %s", str(e))
             else:
                 logger.warning("No changes made to user state for user: %s", user_id)
             
@@ -412,6 +423,17 @@ class UserService:
             success = cursor.rowcount > 0
             if success:
                 logger.info("Successfully updated user profile for user: %s", user_id)
+                # Publish user_updated event for profile changes
+                try:
+                    event = create_event(
+                        "user_updated",
+                        user_id=user_id,
+                        update_type="profile",
+                        updated_fields=profile_updates
+                    )
+                    await self.event_bus.publish("user_updated", event.dict())
+                except Exception as e:
+                    logger.warning("Failed to publish user_updated event for profile change: %s", str(e))
             else:
                 logger.warning("No changes made to user profile for user: %s", user_id)
             
@@ -434,6 +456,10 @@ class UserService:
         logger.info("Deleting user: %s (reason: %s)", user_id, deletion_reason)
         
         try:
+            # Get user data before deletion for event metadata
+            user_profile = self._get_user_profile(user_id)
+            user_state = self._get_user_state(user_id)
+            
             # Delete from SQLite
             sqlite_success = self._delete_user_profile(user_id)
             if not sqlite_success:
@@ -453,7 +479,11 @@ class UserService:
                 event = create_event(
                     "user_deleted",
                     user_id=user_id,
-                    deletion_reason=deletion_reason
+                    deletion_reason=deletion_reason,
+                    metadata={
+                        "user_profile": user_profile,
+                        "user_state": user_state
+                    }
                 )
                 await self.event_bus.publish("user_deleted", event.dict())
             except Exception as e:
@@ -604,6 +634,26 @@ class UserService:
         except Exception as e:
             logger.error("Error deducting besitos: %s", str(e))
             raise
+
+    async def publish_user_interaction(self, user_id: str, action: str, context: Dict[str, Any] = None) -> None:
+        """Publish a user interaction event.
+        
+        Args:
+            user_id (str): User ID
+            action (str): User action
+            context (Dict[str, Any]): Context of the interaction
+        """
+        try:
+            event = create_event(
+                "user_interaction",
+                user_id=user_id,
+                action=action,
+                context=context or {}
+            )
+            await self.event_bus.publish("user_interaction", event.dict())
+            logger.debug("Published user interaction event for user: %s, action: %s", user_id, action)
+        except Exception as e:
+            logger.warning("Failed to publish user_interaction event: %s", str(e))
 
 
 # Convenience function for easy usage

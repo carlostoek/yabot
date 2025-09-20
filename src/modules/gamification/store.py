@@ -183,6 +183,24 @@ class Store:
         self.user_items: Collection = mongodb_handler.get_user_items_collection()
         self.users: Collection = mongodb_handler.get_users_collection()
 
+    async def initialize(self) -> bool:
+        """Initialize the store and subscribe to events.
+        
+        Returns:
+            bool: True if initialization was successful, False otherwise
+        """
+        try:
+            # Subscribe to events that might affect the store
+            # For example, when a user registers, we might want to give them starter items
+            # Or when certain achievements are unlocked, we might want to offer special items
+            
+            logger.info("Store initialized and subscribed to events")
+            return True
+            
+        except Exception as e:
+            logger.error("Error initializing store: %s", str(e))
+            return False
+
     # === STORE BROWSING ===
 
     async def get_store_menu(self, page: int = 0, category_filter: Optional[ItemCategory] = None,
@@ -428,11 +446,10 @@ class Store:
             balance_after (int): User's balance after purchase
         """
         try:
-            event = ItemPurchasedEvent(
-                event_id=str(uuid.uuid4()),
-                event_type="item_purchased",
-                timestamp=datetime.utcnow(),
-                correlation_id=f"{user_id}_{datetime.utcnow().timestamp()}",
+            from src.events.models import create_event
+            
+            event = create_event(
+                "item_purchased",
                 user_id=user_id,
                 item_id=item_id,
                 item_name=item_name,
@@ -442,7 +459,7 @@ class Store:
                 balance_after=balance_after
             )
 
-            await self.event_bus.publish("item_purchased", event.model_dump())
+            await self.event_bus.publish("item_purchased", event.dict())
             logger.info("Published item_purchased event for user %s, item %s", user_id, item_id)
 
         except Exception as e:

@@ -52,7 +52,7 @@ class DailyGiftSystem:
             gift_type=gift_type,
             gift_amount=gift_amount,
         )
-        await self.event_bus.publish(event)
+        await self.event_bus.publish("daily_gift_claimed", event.dict())
 
         return GiftResult(
             success=True,

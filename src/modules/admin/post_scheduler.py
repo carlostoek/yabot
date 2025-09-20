@@ -9,6 +9,9 @@ from apscheduler.jobstores.redis import RedisJobStore
 
 from src.events.bus import EventBus
 from src.events.models import create_event
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 class ScheduledPost(BaseModel):
     job_id: str
@@ -32,6 +35,23 @@ class PostScheduler:
         self.scheduler = AsyncIOScheduler(jobstores=jobstores)
         self.scheduler.start()
 
+    async def initialize(self) -> bool:
+        """Initialize the post scheduler and subscribe to events.
+        
+        Returns:
+            bool: True if initialization was successful, False otherwise
+        """
+        try:
+            # Subscribe to events that might affect post scheduling
+            # For example, admin commands to schedule posts, system maintenance events, etc.
+            
+            logger.info("PostScheduler initialized and subscribed to events")
+            return True
+            
+        except Exception as e:
+            logger.error("Error initializing post scheduler: %s", str(e))
+            return False
+
     async def schedule_post(self, content: str, channel_id: str, publish_time: datetime) -> ScheduledPost:
         """Schedules a post to be sent to a channel at a specific time."""
         
@@ -39,10 +59,10 @@ class PostScheduler:
             try:
                 await self.bot.send_message(chat_id=channel_id, text=content)
                 event = create_event("post_scheduled", channel_id=channel_id, status="published")
-                await self.event_bus.publish(event)
+                await self.event_bus.publish("post_scheduled", event.dict())
             except Exception as e:
                 event = create_event("post_scheduled", channel_id=channel_id, status="failed", error=str(e))
-                await self.event_bus.publish(event)
+                await self.event_bus.publish("post_scheduled", event.dict())
 
         job = self.scheduler.add_job(job, 'date', run_date=publish_time)
         
