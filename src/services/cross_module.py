@@ -10,27 +10,6 @@ from src.events.bus import EventBus
 
 logger = get_logger(__name__)
 
-# Dependency function to get ItemManager instance
-async def get_item_manager() -> ItemManager:
-    # This is a placeholder - you'll need to implement proper dependency injection
-    # For now, we'll create a basic instance
-    # Note: You may need to pass required dependencies to ItemManager's constructor
-    return ItemManager()
-
-# Dependency function to get CrossModuleService instance
-async def get_cross_module_service(
-    user_service: UserService = Depends(create_user_service),
-    subscription_service: SubscriptionService = Depends(create_subscription_service),
-    item_manager: ItemManager = Depends(get_item_manager),
-    narrative_service: NarrativeService = Depends(create_narrative_service)
-) -> CrossModuleService:
-    return CrossModuleService(
-        user_service, 
-        subscription_service, 
-        item_manager, 
-        narrative_service
-    )
-
 class CrossModuleService:
     """Service to handle interactions between different modules"""
     
@@ -130,3 +109,24 @@ class CrossModuleService:
         # This would need integration with a hint system
         
         logger.info(f"User {user_id} awarded {besitos_awarded} besitos for reaction")
+
+# Dependency function to get ItemManager instance
+async def get_item_manager() -> ItemManager:
+    # This is a placeholder - you'll need to implement proper dependency injection
+    # For now, we'll create a basic instance
+    # Note: You may need to pass required dependencies to ItemManager's constructor
+    return ItemManager()
+
+# Dependency function to get CrossModuleService instance
+async def get_cross_module_service(
+    user_service: UserService = Depends(create_user_service),
+    subscription_service: SubscriptionService = Depends(create_subscription_service),
+    item_manager: ItemManager = Depends(get_item_manager),
+    narrative_service: NarrativeService = Depends(create_narrative_service)
+) -> CrossModuleService:
+    return CrossModuleService(
+        user_service, 
+        subscription_service, 
+        item_manager, 
+        narrative_service
+    )
