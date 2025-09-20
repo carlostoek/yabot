@@ -260,6 +260,33 @@ class ModuleRestartEvent(BaseEvent):
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional restart metadata")
 
 
+class DailyGiftClaimedEvent(BaseEvent):
+    """Event published when a user claims a daily gift."""
+
+    gift_type: str = Field(..., description="Type of gift claimed")
+    gift_amount: int = Field(..., description="Amount of gift claimed (e.g., besitos)")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional gift metadata")
+
+
+class PostScheduledEvent(BaseEvent):
+    """Event published when a post is scheduled."""
+
+    channel_id: str = Field(..., description="ID of the channel")
+    status: str = Field(..., description="Status of the scheduled post (e.g., 'scheduled', 'published', 'failed')")
+    error: Optional[str] = Field(None, description="Error message if the post failed to publish")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional post metadata")
+
+
+class NotificationSentEvent(BaseEvent):
+    """Event published when a notification is sent."""
+
+    channel_id: str = Field(..., description="ID of the channel or user")
+    status: str = Field(..., description="Status of the notification (e.g., 'sent', 'failed')")
+    content: str = Field(..., description="Content of the notification")
+    error: Optional[str] = Field(None, description="Error message if the notification failed")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional notification metadata")
+
+
 # Event type constants for easy reference
 EVENT_MODELS = {
     "user_interaction": UserInteractionEvent,
@@ -287,7 +314,10 @@ EVENT_MODELS = {
     "event_bus_overload": EventBusOverloadEvent,
     "data_inconsistency_detected": DataInconsistencyDetectedEvent,
     "health_check_failed": HealthCheckFailedEvent,
-    "module_restart": ModuleRestartEvent
+    "module_restart": ModuleRestartEvent,
+    "daily_gift_claimed": DailyGiftClaimedEvent,
+    "post_scheduled": PostScheduledEvent,
+    "notification_sent": NotificationSentEvent
 }
 
 
