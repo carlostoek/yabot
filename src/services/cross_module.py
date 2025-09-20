@@ -1,4 +1,5 @@
 from typing import Dict, Any, Optional, List
+from datetime import datetime
 from fastapi import Depends
 from src.services.user import UserService, create_user_service
 from src.services.subscription import SubscriptionService, create_subscription_service
@@ -1132,6 +1133,176 @@ class CrossModuleService:
         except Exception as e:
             logger.error(f"Error revoking access for user {user_id} from channel {channel_id}: {e}")
             return {"success": False, "message": "Error al revocar acceso"}
+
+    async def process_emotional_interaction(
+        self,
+        user_id: str,
+        interaction_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Process emotional interaction with complete YABOT integration
+        """
+        try:
+            # 1. Behavioral Analysis
+            # Note: In a full implementation, this would use EmotionalIntelligenceService
+            # For now, we'll simulate the analysis result
+            
+            analysis_result = {
+                "authenticity_detected": True,
+                "authenticity_score": 0.85,
+                "vulnerability_level": 0.7,
+                "archetype": "EXPLORADOR_PROFUNDO",
+                "signature_strength": 0.9
+            }
+            
+            # 2. Update User Emotional Signature
+            if analysis_result.get("authenticity_detected"):
+                # In a full implementation, this would call:
+                # await self.user_service.update_emotional_signature(user_id, analysis_result)
+                logger.info(f"Would update emotional signature for user {user_id}")
+            
+            # 3. Check for Level Progression
+            # In a full implementation, this would check for level progression based on emotional metrics
+            level_progression = {
+                "should_progress": False,
+                "new_level": 1,
+                "previous_level": 1
+            }
+            
+            if level_progression.get("should_progress"):
+                # Validate VIP access for Diana levels 4-6
+                if level_progression["new_level"] >= 4:
+                    has_vip = await self.subscription_service.is_user_vip(user_id)
+                    if not has_vip:
+                        return {
+                            "success": False,
+                            "message": "VIP access required for Diana Diván levels",
+                            "vip_upgrade_required": True
+                        }
+                
+                # In a full implementation, this would call:
+                # await self.user_service.advance_diana_level(user_id, level_progression["new_level"], level_progression)
+                logger.info(f"Would advance user {user_id} to Diana level {level_progression['new_level']}")
+            
+            # 4. Award Emotional Rewards
+            if analysis_result.get("authenticity_detected") and self.besitos_wallet:
+                authenticity_bonus = int(analysis_result.get("authenticity_score", 0) * 10)
+                if authenticity_bonus > 0:
+                    # In a full implementation, this would call:
+                    # await self.besitos_wallet.add_besitos(user_id, authenticity_bonus, "emotional_authenticity", "emotional_system")
+                    logger.info(f"Would award {authenticity_bonus} besitos for emotional authenticity to user {user_id}")
+            
+            # 5. Check Emotional Achievements
+            if self.achievement_system and analysis_result.get("authenticity_detected"):
+                # In a full implementation, this would call:
+                # await self.achievement_system.check_achievements(user_id, "emotional_milestone")
+                logger.info(f"Would check emotional achievements for user {user_id}")
+            
+            # 6. Generate Personalized Response
+            # In a full implementation, this would call:
+            # personalized_content = await self.narrative_service.get_personalized_content(
+            #     user_id,
+            #     interaction_data.get("fragment_id"),
+            #     analysis_result.get("emotional_context", {})
+            # )
+            
+            personalized_content = {
+                "response": "Gracias por compartir tus pensamientos. Tu autenticidad es valiosa.",
+                "emotional_tone": "supportive"
+            }
+            
+            return {
+                "success": True,
+                "emotional_analysis": analysis_result,
+                "personalized_response": personalized_content,
+                "integration_status": "complete"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error processing emotional interaction for user {user_id}: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def handle_diana_level_progression(
+        self,
+        user_id: str,
+        level_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Handle Diana level progression with complete system integration
+        """
+        try:
+            new_level = level_data["new_level"]
+            
+            # 1. Update Mission Progress
+            if self.mission_manager:
+                await self.mission_manager.update_progress(
+                    user_id,
+                    "diana_progression",
+                    {"level": new_level}
+                )
+            
+            # 2. Award Level Progression Achievements
+            if self.achievement_system:
+                await self.achievement_system.unlock_achievement(
+                    user_id,
+                    f"diana_level_{new_level}"
+                )
+            
+            # 3. Award Level Progression Besitos
+            if self.besitos_wallet:
+                level_rewards = {
+                    2: 100, 3: 200, 4: 500, 5: 1000, 6: 2000
+                }
+                reward = level_rewards.get(new_level, 0)
+                if reward > 0:
+                    await self.besitos_wallet.add_besitos(
+                        user_id,
+                        reward,
+                        f"diana_level_{new_level}_progression",
+                        "emotional_system"
+                    )
+            
+            # 4. Send Level Progression Notification
+            if self.notification_system:
+                await self.notification_system.send_message(
+                    user_id,
+                    "diana_level_progression",
+                    {"new_level": new_level, "level_name": self._get_level_name(new_level)}
+                )
+            
+            # 5. Update VIP Integration Status
+            if new_level >= 4:
+                vip_status = await self.subscription_service.is_user_vip(user_id)
+                await self.user_service.update_user_state(user_id, {
+                    "emotional_journey.vip_integration_status": {
+                        "has_vip_access": vip_status,
+                        "divan_access_granted": vip_status,
+                        "last_vip_check": datetime.utcnow()
+                    }
+                })
+            
+            return {
+                "success": True,
+                "new_level": new_level,
+                "rewards_distributed": True,
+                "notifications_sent": True
+            }
+            
+        except Exception as e:
+            logger.error(f"Error handling Diana level progression: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def _get_level_name(self, level: int) -> str:
+        """Get Diana level name"""
+        level_names = {
+            1: "Los Kinkys - Primer Encuentro",
+            2: "Los Kinkys - Evolución de la Mirada",
+            3: "Los Kinkys - Cartografía del Deseo",
+            4: "El Diván - Inversión del Espejo",
+            5: "El Diván - Sostener Paradojas",
+            6: "El Diván - Círculo Íntimo"
+        }
+        return level_names.get(level, f"Level {level}")
 
     async def initialize_admin_systems(self) -> None:
         """

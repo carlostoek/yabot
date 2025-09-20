@@ -27,3 +27,27 @@ class MemoryCallback(BaseModel):
     callback_text: str
     source_memory_id: str
     relevance_score: float
+
+class PersonalizedResponse(BaseModel):
+    """Represents a fully personalized response to be sent to the user."""
+    response_text: str
+    personalization_details: Dict[str, Any]
+
+class ContentVariant(BaseModel):
+    """Represents a variant of a piece of content tailored for an archetype."""
+    variant_text: str
+    archetype: str
+
+class ProgressionAssessment(BaseModel):
+    """Represents the assessment of a user's readiness to progress."""
+    is_ready: bool
+    next_level: Optional[int] = None
+    reason: str
+    required_vip: bool = False
+
+class EmotionalResponse(BaseModel):
+    """Represents the outcome of an emotional analysis."""
+    emotional_metrics: Dict[str, Any]
+    archetype: Optional[str] = None
+    progression_assessment: Optional[ProgressionAssessment] = None
+    significant_moment_recorded: bool = False

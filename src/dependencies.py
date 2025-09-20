@@ -55,3 +55,42 @@ def get_besitos_wallet() -> BesitosWallet:
     mongodb_handler = get_mongodb_handler()
     event_bus = get_event_bus()
     return BesitosWallet(mongodb_handler, event_bus)
+
+async def get_emotional_intelligence_service():
+    """Get emotional intelligence service instance."""
+    # Note: In a full implementation, this would need to properly import and instantiate
+    # the EmotionalIntelligenceService with its required dependencies
+    # For now, we're providing a placeholder that follows the pattern
+    from src.modules.emotional.intelligence_service import EmotionalIntelligenceService
+    from src.database.manager import DatabaseManager
+    
+    database_manager = DatabaseManager(get_config_manager())
+    event_bus = get_event_bus()
+    
+    # These would need to be properly implemented with actual dependency injection
+    # For now, using placeholders as indicated in the original pattern
+    user_service = None  # This would be properly injected
+    narrative_service = None  # This would be properly injected
+    
+    return EmotionalIntelligenceService(
+        database_manager=database_manager,
+        event_bus=event_bus,
+        user_service=user_service,
+        narrative_service=narrative_service
+    )
+
+async def get_emotional_memory_service():
+    """Get emotional memory service instance."""
+    # Note: In a full implementation, this would need to properly import and instantiate
+    # the EmotionalMemoryService with its required dependencies
+    # For now, we're providing a placeholder that follows the pattern
+    from src.modules.emotional.memory_service import EmotionalMemoryService
+    from src.database.manager import DatabaseManager
+    
+    database_manager = DatabaseManager(get_config_manager())
+    event_bus = get_event_bus()
+    
+    return EmotionalMemoryService(
+        database_manager=database_manager,
+        event_bus=event_bus
+    )

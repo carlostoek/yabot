@@ -101,6 +101,11 @@ class BotApplication:
             # Set up user service after database and event bus
             await self._setup_user_service()
             
+            # Initialize emotional intelligence system
+            emotional_success = await self.initialize_emotional_intelligence()
+            if not emotional_success:
+                logger.warning("Emotional intelligence system failed to initialize")
+            
             # Set up API server
             await self._setup_api_server()
             
@@ -733,3 +738,35 @@ class BotApplication:
             bool: True if webhook mode is enabled, False otherwise
         """
         return self._is_webhook_enabled
+
+    async def initialize_emotional_intelligence(self):
+        """Initialize emotional intelligence system.
+        
+        This method sets up the emotional intelligence system as part of the 
+        complete YABOT integration, following the specification requirements.
+        """
+        try:
+            # Import emotional event handlers
+            from src.modules.emotional import register_emotional_event_handlers
+            
+            # Register emotional event handlers if event bus and cross module service are available
+            if self.event_bus and hasattr(self, 'cross_module_service') and self.cross_module_service:
+                await register_emotional_event_handlers(self.event_bus, self.cross_module_service)
+                logger.info("Emotional intelligence event handlers registered successfully")
+            
+            # Initialize emotional intelligence service
+            from src.dependencies import get_emotional_intelligence_service
+            emotional_service = await get_emotional_intelligence_service()
+            if hasattr(emotional_service, 'initialize'):
+                await emotional_service.initialize()
+            
+            # Add emotional API routes if API server is available
+            if self.api_server and hasattr(self.api_server, 'app'):
+                from src.api.endpoints.emotional import router as emotional_router
+                self.api_server.app.include_router(emotional_router)
+            
+            logger.info("Emotional intelligence system initialized successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to initialize emotional intelligence: {e}")
+            return False
