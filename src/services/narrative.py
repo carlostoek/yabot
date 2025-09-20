@@ -379,6 +379,66 @@ class NarrativeService:
             logger.error("Error retrieving VIP narrative fragment: %s", str(e))
             raise NarrativeServiceError(f"Failed to retrieve VIP narrative fragment: {str(e)}")
 
+    async def get_fragment(self, fragment_id: str) -> Optional[Dict[str, Any]]:
+        """Get a narrative fragment by its ID"""
+        try:
+            return await self.get_narrative_fragment(fragment_id)
+        except NarrativeFragmentNotFoundError:
+            return None
+        except Exception as e:
+            logger.error("Error getting fragment: %s", str(e))
+            return None
+
+    async def record_user_choice(
+        self, 
+        user_id: str, 
+        fragment_id: str, 
+        choice_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Record a user's choice in the narrative"""
+        try:
+            # Update user's progress in MongoDB
+            db = self.database_manager.get_mongo_db()
+            users_collection = db["users"]
+            
+            # Add the choice to the user's narrative progress
+            result = users_collection.update_one(
+                {"user_id": user_id},
+                {
+                    "$push": {
+                        "current_state.narrative_progress.choices_made": {
+                            "fragment_id": fragment_id,
+                            "choice_data": choice_data,
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
+                    },
+                    "$set": {"updated_at": datetime.utcnow().isoformat()}
+                }
+            )
+            
+            if result.modified_count > 0:
+                logger.info("Recorded choice for user %s in fragment %s", user_id, fragment_id)
+                # Publish decision_made event
+                try:
+                    event = create_event(
+                        "decision_made",
+                        user_id=user_id,
+                        fragment_id=fragment_id,
+                        choice_data=choice_data
+                    )
+                    await self.event_bus.publish("decision_made", event.dict())
+                except Exception as e:
+                    logger.warning("Failed to publish decision_made event: %s", str(e))
+                
+                return {"success": True, "user_id": user_id, "fragment_id": fragment_id}
+            else:
+                logger.warning("No user found to record choice: %s", user_id)
+                return {"success": False, "error": "User not found"}
+                
+        except Exception as e:
+            logger.error("Error recording user choice: %s", str(e))
+            return {"success": False, "error": str(e)}
+
 
 # Convenience function for easy usage
 async def create_narrative_service(database_manager: DatabaseManager, 

@@ -444,6 +444,15 @@ class SubscriptionService:
             logger.error("Error validating VIP access: %s", str(e))
             return False
 
+    async def is_user_vip(self, user_id: str) -> bool:
+        """Check if a user has VIP status"""
+        try:
+            # Use the existing validate_vip_access which checks for active VIP subscription
+            return await self.validate_vip_access(user_id)
+        except Exception as e:
+            logger.error("Error checking VIP status: %s", str(e))
+            return False
+
 
 # Convenience function for easy usage
 async def create_subscription_service(database_manager: DatabaseManager, 

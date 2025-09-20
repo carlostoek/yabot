@@ -527,6 +527,84 @@ class UserService:
         logger.warning("Would restore user profile for user: %s (not implemented)", user_id)
         return True
 
+    async def get_user_besitos(self, user_id: str) -> int:
+        """Get the number of besitos a user has"""
+        try:
+            # Get user state from MongoDB which may contain besitos
+            state = self._get_user_state(user_id)
+            if state:
+                # Check if besitos field exists in the user's state
+                return state.get('besitos', 0)
+            return 0
+        except Exception as e:
+            logger.error("Error getting user besitos: %s", str(e))
+            return 0
+
+    async def award_besitos(self, user_id: str, amount: int) -> None:
+        """Award besitos to a user"""
+        try:
+            db = self.database_manager.get_mongo_db()
+            users_collection = db["users"]
+            
+            # Update user's besitos using $inc to increment atomically
+            result = users_collection.update_one(
+                {"user_id": user_id},
+                {"$inc": {"besitos": amount}, "$set": {"updated_at": datetime.utcnow().isoformat()}}
+            )
+            
+            if result.modified_count > 0:
+                logger.info("Awarded %d besitos to user: %s", amount, user_id)
+                # Publish besitos_awarded event
+                try:
+                    event = create_event(
+                        "besitos_awarded",
+                        user_id=user_id,
+                        amount=amount,
+                        new_balance=(await self.get_user_besitos(user_id))
+                    )
+                    await self.event_bus.publish("besitos_awarded", event.dict())
+                except Exception as e:
+                    logger.warning("Failed to publish besitos_awarded event: %s", str(e))
+            else:
+                logger.warning("No user found to award besitos: %s", user_id)
+        except Exception as e:
+            logger.error("Error awarding besitos: %s", str(e))
+
+    async def deduct_besitos(self, user_id: str, amount: int) -> None:
+        """Deduct besitos from a user"""
+        try:
+            current_besitos = await self.get_user_besitos(user_id)
+            if current_besitos < amount:
+                raise UserServiceError(f"Insufficient besitos: {current_besitos} < {amount}")
+            
+            db = self.database_manager.get_mongo_db()
+            users_collection = db["users"]
+            
+            # Update user's besitos using $inc to decrement atomically
+            result = users_collection.update_one(
+                {"user_id": user_id},
+                {"$inc": {"besitos": -amount}, "$set": {"updated_at": datetime.utcnow().isoformat()}}
+            )
+            
+            if result.modified_count > 0:
+                logger.info("Deducted %d besitos from user: %s", amount, user_id)
+                # Publish besitos_spent event
+                try:
+                    event = create_event(
+                        "besitos_spent",
+                        user_id=user_id,
+                        amount=amount,
+                        new_balance=(await self.get_user_besitos(user_id))
+                    )
+                    await self.event_bus.publish("besitos_spent", event.dict())
+                except Exception as e:
+                    logger.warning("Failed to publish besitos_spent event: %s", str(e))
+            else:
+                logger.warning("No user found to deduct besitos: %s", user_id)
+        except Exception as e:
+            logger.error("Error deducting besitos: %s", str(e))
+            raise
+
 
 # Convenience function for easy usage
 async def create_user_service(database_manager: DatabaseManager, 
