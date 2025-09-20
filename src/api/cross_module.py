@@ -1,10 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any
-from src.services.cross_module import CrossModuleService
-from src.services.user import UserService
-from src.services.subscription import SubscriptionService
-from src.modules.gamification.item_manager import ItemManager
-from src.services.narrative import NarrativeService
+from src.services.cross_module import CrossModuleService, get_cross_module_service
 from src.shared.api.auth import authenticate_module_request
 
 router = APIRouter()
@@ -13,7 +9,7 @@ router = APIRouter()
 async def check_narrative_access(
     user_id: str,
     fragment_id: str,
-    cross_module_service: CrossModuleService = Depends(),
+    cross_module_service: CrossModuleService = Depends(get_cross_module_service),
     auth: str = Depends(authenticate_module_request)
 ):
     """Check if a user can access specific narrative content"""
@@ -25,7 +21,7 @@ async def make_narrative_choice(
     user_id: str,
     fragment_id: str,
     choice_data: Dict[str, Any],
-    cross_module_service: CrossModuleService = Depends(),
+    cross_module_service: CrossModuleService = Depends(get_cross_module_service),
     auth: str = Depends(authenticate_module_request)
 ):
     """Process a narrative choice and update all relevant systems"""
@@ -39,7 +35,7 @@ async def make_narrative_choice(
 async def handle_user_reaction(
     user_id: str,
     reaction_data: Dict[str, Any],
-    cross_module_service: CrossModuleService = Depends(),
+    cross_module_service: CrossModuleService = Depends(get_cross_module_service),
     auth: str = Depends(authenticate_module_request)
 ):
     """Handle user reactions that impact multiple modules"""
