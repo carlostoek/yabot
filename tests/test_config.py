@@ -180,6 +180,7 @@ class TestConfigManager:
         assert database_config.sqlite_database_path == "yabot.db"  # Default value
     
     @patch.dict(os.environ, {}, clear=True)
+    @patch('src.config.manager.load_dotenv', lambda: None)  # Mock load_dotenv to prevent loading .env file
     def test_get_database_config_missing_uri(self):
         """Test getting database configuration when MongoDB URI is missing."""
         config_manager = ConfigManager()
@@ -212,6 +213,7 @@ class TestConfigManager:
         assert redis_config.redis_password is None
     
     @patch.dict(os.environ, {}, clear=True)
+    @patch('src.config.manager.load_dotenv', lambda: None)  # Mock load_dotenv to prevent loading .env file
     def test_get_redis_config_missing_url(self):
         """Test getting Redis configuration when Redis URL is missing."""
         config_manager = ConfigManager()

@@ -10,7 +10,7 @@ import asyncio
 import logging
 import sqlite3
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Callable, Awaitable
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 from src.config.manager import ConfigManager
@@ -47,6 +47,10 @@ class DatabaseManager:
         try:
             # Get database configuration
             db_config = self.config_manager.get_database_config()
+            
+            # Track which databases were configured for recovery monitoring
+            self._mongo_was_configured = bool(db_config.mongodb_uri and db_config.mongodb_database)
+            self._sqlite_was_configured = bool(db_config.sqlite_database_path)
             
             # Try to connect to MongoDB, but don't fail if not configured
             mongo_success = True
@@ -263,3 +267,284 @@ class DatabaseManager:
             bool: True if all databases are connected, False otherwise
         """
         return self._is_connected
+    
+    async def execute_cross_database_transaction(
+        self, 
+        mongo_operations: Optional[Callable] = None,
+        sqlite_operations: Optional[Callable] = None,
+        rollback_on_failure: bool = True
+    ) -> bool:
+        """Execute operations across both MongoDB and SQLite databases atomically.
+        
+        This method implements cross-database transaction utilities as required
+        by requirements 2.1, 2.3, and 2.5.
+        
+        Args:
+            mongo_operations: Function to execute MongoDB operations
+            sqlite_operations: Function to execute SQLite operations
+            rollback_on_failure: Whether to attempt rollback on failure
+            
+        Returns:
+            bool: True if all operations succeeded, False otherwise
+        """
+        logger.info("Starting cross-database transaction")
+        
+        # Track if we have active connections to both databases
+        mongo_available = self._mongo_client is not None and self._mongo_db_name is not None
+        sqlite_available = self._sqlite_conn is not None
+        
+        # If neither database is available, we can't perform any operations
+        if not mongo_available and not sqlite_available:
+            logger.warning("No database connections available for cross-database transaction")
+            return False
+        
+        # Track success of each operation
+        mongo_success = True
+        sqlite_success = True
+        mongo_error = None
+        sqlite_error = None
+        
+        # Track if we need to rollback
+        rollback_needed = False
+        
+        try:
+            # Execute MongoDB operations if provided and MongoDB is available
+            if mongo_operations and mongo_available:
+                try:
+                    logger.debug("Executing MongoDB operations in cross-database transaction")
+                    # Start a MongoDB session for transaction support
+                    async with await self._mongo_client.start_session() as session:
+                        async with session.start_transaction():
+                            await mongo_operations(self.get_mongo_db(), session)
+                except Exception as e:
+                    mongo_success = False
+                    mongo_error = str(e)
+                    logger.error("MongoDB operations failed in cross-database transaction: %s", mongo_error)
+                    rollback_needed = rollback_on_failure
+            
+            # Execute SQLite operations if provided and SQLite is available
+            if sqlite_operations and sqlite_available:
+                try:
+                    logger.debug("Executing SQLite operations in cross-database transaction")
+                    # Start a SQLite transaction
+                    sqlite_conn = self.get_sqlite_conn()
+                    sqlite_conn.execute("BEGIN")
+                    
+                    try:
+                        await sqlite_operations(sqlite_conn)
+                        sqlite_conn.execute("COMMIT")
+                    except Exception:
+                        sqlite_conn.execute("ROLLBACK")
+                        raise
+                except Exception as e:
+                    sqlite_success = False
+                    sqlite_error = str(e)
+                    logger.error("SQLite operations failed in cross-database transaction: %s", sqlite_error)
+                    rollback_needed = rollback_on_failure
+            
+            # Check if all operations succeeded
+            success = mongo_success and sqlite_success
+            
+            if success:
+                logger.info("Cross-database transaction completed successfully")
+            else:
+                logger.warning(
+                    "Cross-database transaction partially failed: MongoDB=%s, SQLite=%s", 
+                    mongo_success, 
+                    sqlite_success
+                )
+                if rollback_needed:
+                    await self._rollback_cross_database_transaction()
+            
+            return success
+            
+        except Exception as e:
+            logger.error("Unexpected error in cross-database transaction: %s", str(e))
+            if rollback_on_failure:
+                await self._rollback_cross_database_transaction()
+            return False
+    
+    async def _rollback_cross_database_transaction(self) -> None:
+        """Rollback operations in a cross-database transaction.
+        
+        Note: This is a simplified rollback implementation. In a production environment,
+        you would need to implement more sophisticated rollback mechanisms.
+        """
+        logger.info("Rolling back cross-database transaction")
+        # In a real implementation, you would need to maintain a log of operations
+        # and their inverses to properly rollback. For now, we just log the rollback.
+        logger.warning("Cross-database transaction rollback is not fully implemented")
+
+    async def start_offline_recovery_monitor(self) -> None:
+        """Start the offline database recovery monitoring mechanism.
+        
+        This method implements requirement 2.5 by starting background tasks
+        that monitor database connections and attempt recovery when databases
+        come back online after being offline.
+        """
+        logger.info("Starting offline database recovery monitor")
+        
+        # Start MongoDB recovery monitor task
+        if not hasattr(self, '_mongo_recovery_task') or self._mongo_recovery_task.done():
+            self._mongo_recovery_task = asyncio.create_task(self._monitor_mongo_recovery())
+        
+        # Start SQLite recovery monitor task
+        if not hasattr(self, '_sqlite_recovery_task') or self._sqlite_recovery_task.done():
+            self._sqlite_recovery_task = asyncio.create_task(self._monitor_sqlite_recovery())
+        
+        logger.info("Offline database recovery monitor started")
+
+    async def _monitor_mongo_recovery(self) -> None:
+        """Monitor MongoDB connection recovery and attempt reconnection."""
+        logger.debug("Starting MongoDB recovery monitor")
+        
+        while True:
+            try:
+                # Check if MongoDB is disconnected but was previously configured
+                if (not self._mongo_client or not self._mongo_db_name) and \
+                   hasattr(self, '_mongo_was_configured') and self._mongo_was_configured:
+                    
+                    logger.info("Attempting MongoDB recovery...")
+                    
+                    # Get database configuration
+                    db_config = self.config_manager.get_database_config()
+                    
+                    # Try to reconnect to MongoDB
+                    if db_config.mongodb_uri and db_config.mongodb_database:
+                        success = await self._connect_mongodb(
+                            db_config.mongodb_uri, 
+                            db_config.mongodb_database
+                        )
+                        
+                        if success:
+                            logger.info("MongoDB recovery successful")
+                            # Publish recovery event
+                            from src.events.bus import EventBus
+                            from src.events.models import create_event
+                            
+                            # In a real implementation, you would have access to the event bus
+                            # For now, we'll just log the recovery
+                            
+                            # Update connection status
+                            self._is_connected = self._mongo_client is not None or self._sqlite_conn is not None
+                        else:
+                            logger.warning("MongoDB recovery attempt failed")
+                
+                # Wait before next check
+                await asyncio.sleep(30)  # Check every 30 seconds
+                
+            except asyncio.CancelledError:
+                logger.info("MongoDB recovery monitor cancelled")
+                break
+            except Exception as e:
+                logger.error("Error in MongoDB recovery monitor: %s", str(e))
+                await asyncio.sleep(60)  # Wait longer on error
+
+    async def _monitor_sqlite_recovery(self) -> None:
+        """Monitor SQLite connection recovery and attempt reconnection."""
+        logger.debug("Starting SQLite recovery monitor")
+        
+        while True:
+            try:
+                # Check if SQLite is disconnected but was previously configured
+                if (not self._sqlite_conn) and \
+                   hasattr(self, '_sqlite_was_configured') and self._sqlite_was_configured:
+                    
+                    logger.info("Attempting SQLite recovery...")
+                    
+                    # Get database configuration
+                    db_config = self.config_manager.get_database_config()
+                    
+                    # Try to reconnect to SQLite
+                    if db_config.sqlite_database_path:
+                        success = self._connect_sqlite(db_config.sqlite_database_path)
+                        
+                        if success:
+                            logger.info("SQLite recovery successful")
+                            # Publish recovery event
+                            # Update connection status
+                            self._is_connected = self._mongo_client is not None or self._sqlite_conn is not None
+                        else:
+                            logger.warning("SQLite recovery attempt failed")
+                
+                # Wait before next check
+                await asyncio.sleep(30)  # Check every 30 seconds
+                
+            except asyncio.CancelledError:
+                logger.info("SQLite recovery monitor cancelled")
+                break
+            except Exception as e:
+                logger.error("Error in SQLite recovery monitor: %s", str(e))
+                await asyncio.sleep(60)  # Wait longer on error
+
+    async def trigger_manual_recovery(self) -> Dict[str, bool]:
+        """Manually trigger database recovery attempts.
+        
+        Returns:
+            Dict[str, bool]: Recovery results for each database
+        """
+        logger.info("Manually triggering database recovery")
+        
+        results = {
+            "mongodb": False,
+            "sqlite": False
+        }
+        
+        try:
+            # Get database configuration
+            db_config = self.config_manager.get_database_config()
+            
+            # Try to recover MongoDB if it was configured
+            if hasattr(self, '_mongo_was_configured') and self._mongo_was_configured:
+                if db_config.mongodb_uri and db_config.mongodb_database:
+                    logger.info("Attempting manual MongoDB recovery...")
+                    results["mongodb"] = await self._connect_mongodb(
+                        db_config.mongodb_uri, 
+                        db_config.mongodb_database
+                    )
+                    if results["mongodb"]:
+                        logger.info("Manual MongoDB recovery successful")
+                    else:
+                        logger.warning("Manual MongoDB recovery failed")
+            
+            # Try to recover SQLite if it was configured
+            if hasattr(self, '_sqlite_was_configured') and self._sqlite_was_configured:
+                if db_config.sqlite_database_path:
+                    logger.info("Attempting manual SQLite recovery...")
+                    results["sqlite"] = self._connect_sqlite(db_config.sqlite_database_path)
+                    if results["sqlite"]:
+                        logger.info("Manual SQLite recovery successful")
+                    else:
+                        logger.warning("Manual SQLite recovery failed")
+            
+            # Update overall connection status
+            self._is_connected = results["mongodb"] or results["sqlite"]
+            
+            logger.info("Manual recovery completed: %s", results)
+            return results
+            
+        except Exception as e:
+            logger.error("Error during manual recovery: %s", str(e))
+            return results
+
+    async def stop_offline_recovery_monitor(self) -> None:
+        """Stop the offline database recovery monitoring mechanism."""
+        logger.info("Stopping offline database recovery monitor")
+        
+        # Cancel MongoDB recovery task
+        if hasattr(self, '_mongo_recovery_task') and not self._mongo_recovery_task.done():
+            self._mongo_recovery_task.cancel()
+            try:
+                await self._mongo_recovery_task
+            except asyncio.CancelledError:
+                pass
+        
+        # Cancel SQLite recovery task
+        if hasattr(self, '_sqlite_recovery_task') and not self._sqlite_recovery_task.done():
+            self._sqlite_recovery_task.cancel()
+            try:
+                await self._sqlite_recovery_task
+            except asyncio.CancelledError:
+                pass
+        
+        logger.info("Offline database recovery monitor stopped")

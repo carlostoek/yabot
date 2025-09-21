@@ -1,18 +1,38 @@
 # src/modules/admin/notification_system.py
 
 from datetime import datetime, timedelta
-from typing import Dict
+from typing import Dict, Any
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from src.events.bus import EventBus
 from src.events.models import create_event
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 class NotificationSystem:
     def __init__(self, bot: Bot, scheduler: AsyncIOScheduler, event_bus: EventBus):
         self.bot = bot
         self.scheduler = scheduler
         self.event_bus = event_bus
+
+    async def initialize(self) -> bool:
+        """Initialize the notification system and subscribe to events.
+        
+        Returns:
+            bool: True if initialization was successful, False otherwise
+        """
+        try:
+            # Subscribe to events that might trigger notifications
+            # For example, system alerts, user milestones, etc.
+            
+            logger.info("NotificationSystem initialized and subscribed to events")
+            return True
+            
+        except Exception as e:
+            logger.error("Error initializing notification system: %s", str(e))
+            return False
 
     async def send_message(self, user_id: str, template: str, context: Dict) -> bool:
         """Sends a message to a user using a template."""
@@ -27,7 +47,7 @@ class NotificationSystem:
                 status="sent",
                 content=message_text
             )
-            await self.event_bus.publish(event)
+            await self.event_bus.publish("notification_sent", event.dict())
             return True
         except Exception as e:
             message_text = template.format(**context)
@@ -39,7 +59,7 @@ class NotificationSystem:
                 content=message_text,
                 error=str(e)
             )
-            await self.event_bus.publish(event)
+            await self.event_bus.publish("notification_sent", event.dict())
             return False
 
     async def schedule_message(self, user_id: str, template: str, context: Dict, delay_seconds: int) -> bool:

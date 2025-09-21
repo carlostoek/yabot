@@ -538,15 +538,19 @@ class MissionManager:
                     )
 
             # Publish besitos awarded event
-            await self.event_bus.publish("besitos_awarded", {
-                "user_id": user_id,
-                "transaction_id": transaction.transaction_id,
-                "amount": amount,
-                "reason": reason,
-                "source": "mission",
-                "balance_after": current_balance + amount,
-                "timestamp": datetime.utcnow().isoformat()
-            })
+            from src.events.models import create_event
+            
+            event = create_event(
+                "besitos_awarded",
+                user_id=user_id,
+                transaction_id=transaction.transaction_id,
+                amount=amount,
+                reason=reason,
+                source="mission",
+                balance_after=current_balance + amount
+            )
+
+            await self.event_bus.publish("besitos_awarded", event.dict())
 
             logger.debug("Awarded %d besitos to user %s for mission completion", amount, user_id)
 
@@ -558,14 +562,17 @@ class MissionManager:
         try:
             # Publish item award events (let item manager handle the actual awarding)
             for item_id in item_ids:
-                await self.event_bus.publish("item_awarded", {
-                    "user_id": user_id,
-                    "item_id": item_id,
-                    "quantity": 1,
-                    "source": "mission",
-                    "reference_id": reference_id,
-                    "timestamp": datetime.utcnow().isoformat()
-                })
+                from src.events.models import create_event
+                
+                event = create_event(
+                    "item_awarded",
+                    user_id=user_id,
+                    item_id=item_id,
+                    quantity=1,
+                    source="mission"
+                )
+
+                await self.event_bus.publish("item_awarded", event.dict())
 
             logger.debug("Awarded items %s to user %s for mission completion", item_ids, user_id)
 
@@ -575,16 +582,18 @@ class MissionManager:
     async def _publish_mission_completed_event(self, mission: Mission, reward: Reward) -> None:
         """Publish mission_completed event (Requirement 2.4)."""
         try:
-            event_data = {
-                "user_id": mission.user_id,
-                "mission_id": mission.mission_id,
-                "mission_type": mission.type.value,
-                "reward_besitos": reward.besitos,
-                "reward_items": reward.items,
-                "timestamp": datetime.utcnow().isoformat()
-            }
+            from src.events.models import create_event
+            
+            event = create_event(
+                "mission_completed",
+                user_id=mission.user_id,
+                mission_id=mission.mission_id,
+                mission_type=mission.type.value,
+                reward_besitos=reward.besitos,
+                reward_items=reward.items
+            )
 
-            await self.event_bus.publish("mission_completed", event_data)
+            await self.event_bus.publish("mission_completed", event.dict())
 
             logger.debug("Published mission_completed event for mission %s", mission.mission_id)
 

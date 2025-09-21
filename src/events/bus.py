@@ -60,6 +60,211 @@ class EventSubscribeError(EventBusError):
     pass
 
 
+class EventSubscriptionManagerError(EventBusError):
+    """Exception raised when event subscription manager operations fail."""
+    pass
+
+
+class EventSubscriptionManager:
+    """Manages event subscriptions and delivery across modules.
+    
+    This class provides enhanced subscription management functionality
+    that extends the existing EventBus publish/subscribe mechanisms.
+    """
+    
+    def __init__(self, event_bus: 'EventBus'):
+        """Initialize the event subscription manager.
+        
+        Args:
+            event_bus: The EventBus instance to manage subscriptions for
+        """
+        self.event_bus = event_bus
+        self._subscriptions: Dict[str, List[Dict[str, Any]]] = {}
+        self._service_subscriptions: Dict[str, List[str]] = {}
+        
+    async def subscribe(
+        self, 
+        event_type: str, 
+        handler: Callable[[Dict[str, Any]], Awaitable[None]], 
+        service_name: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """Subscribe to an event type for a specific service.
+        
+        Args:
+            event_type: The type of event to subscribe to
+            handler: The handler function to call when event is received
+            service_name: The name of the service subscribing
+            metadata: Optional metadata about the subscription
+            
+        Returns:
+            bool: True if subscription was successful, False otherwise
+        """
+        try:
+            # Subscribe through the event bus
+            success = await self.event_bus.subscribe(event_type, handler)
+            
+            if success:
+                # Track subscription
+                subscription_info = {
+                    "event_type": event_type,
+                    "service_name": service_name,
+                    "handler": handler,
+                    "metadata": metadata or {},
+                    "subscribed_at": datetime.utcnow()
+                }
+                
+                if event_type not in self._subscriptions:
+                    self._subscriptions[event_type] = []
+                self._subscriptions[event_type].append(subscription_info)
+                
+                if service_name not in self._service_subscriptions:
+                    self._service_subscriptions[service_name] = []
+                self._service_subscriptions[service_name].append(event_type)
+                
+                logger.info(
+                    f"Service '{service_name}' subscribed to event '{event_type}'"
+                )
+                
+            return success
+            
+        except Exception as e:
+            logger.error(
+                f"Error subscribing service '{service_name}' to event '{event_type}': {e}"
+            )
+            return False
+    
+    async def unsubscribe(self, event_type: str, service_name: str) -> bool:
+        """Unsubscribe a service from an event type.
+        
+        Args:
+            event_type: The type of event to unsubscribe from
+            service_name: The name of the service unsubscribing
+            
+        Returns:
+            bool: True if unsubscription was successful, False otherwise
+        """
+        try:
+            # Remove from our tracking
+            if event_type in self._subscriptions:
+                self._subscriptions[event_type] = [
+                    sub for sub in self._subscriptions[event_type]
+                    if sub["service_name"] != service_name
+                ]
+                
+            if service_name in self._service_subscriptions:
+                if event_type in self._service_subscriptions[service_name]:
+                    self._service_subscriptions[service_name].remove(event_type)
+                
+            logger.info(
+                f"Service '{service_name}' unsubscribed from event '{event_type}'"
+            )
+            return True
+            
+        except Exception as e:
+            logger.error(
+                f"Error unsubscribing service '{service_name}' from event '{event_type}': {e}"
+            )
+            return False
+    
+    async def publish_with_retry(
+        self, 
+        event_type: str, 
+        payload: Dict[str, Any],
+        max_retries: int = 3
+    ) -> bool:
+        """Publish an event with retry mechanism.
+        
+        Args:
+            event_type: The type of event to publish
+            payload: The event payload
+            max_retries: Maximum number of retry attempts
+            
+        Returns:
+            bool: True if event was published successfully, False otherwise
+        """
+        for attempt in range(max_retries + 1):
+            try:
+                success = await self.event_bus.publish(event_type, payload)
+                if success:
+                    return True
+                elif attempt < max_retries:
+                    # Wait before retry with exponential backoff
+                    wait_time = (2 ** attempt) + (0.1 * (attempt + 1))
+                    logger.warning(
+                        f"Event publication failed, retrying in {wait_time}s "
+                        f"(attempt {attempt + 1}/{max_retries})"
+                    )
+                    await asyncio.sleep(wait_time)
+                    
+            except Exception as e:
+                logger.error(
+                    f"Error publishing event '{event_type}' (attempt {attempt + 1}): {e}"
+                )
+                if attempt < max_retries:
+                    wait_time = (2 ** attempt) + (0.1 * (attempt + 1))
+                    logger.warning(f"Retrying in {wait_time}s")
+                    await asyncio.sleep(wait_time)
+        
+        logger.error(f"Failed to publish event '{event_type}' after {max_retries} retries")
+        return False
+    
+    def get_subscriptions_for_service(self, service_name: str) -> List[str]:
+        """Get all event types a service is subscribed to.
+        
+        Args:
+            service_name: The name of the service
+            
+        Returns:
+            List[str]: List of event types the service is subscribed to
+        """
+        return self._service_subscriptions.get(service_name, [])
+    
+    def get_subscribers_for_event(self, event_type: str) -> List[Dict[str, Any]]:
+        """Get all subscribers for an event type.
+        
+        Args:
+            event_type: The type of event
+            
+        Returns:
+            List[Dict[str, Any]]: List of subscription information
+        """
+        return self._subscriptions.get(event_type, [])
+    
+    async def unsubscribe_service(self, service_name: str) -> bool:
+        """Unsubscribe a service from all events.
+        
+        Args:
+            service_name: The name of the service to unsubscribe
+            
+        Returns:
+            bool: True if unsubscription was successful, False otherwise
+        """
+        try:
+            event_types = self._service_subscriptions.get(service_name, [])
+            for event_type in event_types:
+                if event_type in self._subscriptions:
+                    self._subscriptions[event_type] = [
+                        sub for sub in self._subscriptions[event_type]
+                        if sub["service_name"] != service_name
+                    ]
+            
+            if service_name in self._service_subscriptions:
+                del self._service_subscriptions[service_name]
+                
+            logger.info(f"Service '{service_name}' unsubscribed from all events")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error unsubscribing service '{service_name}' from all events: {e}")
+            return False
+
+
+class EventSubscriptionManagerError(EventBusError):
+    """Exception raised when event subscription manager operations fail."""
+    pass
+
+
 class EventBus:
     """Event bus implementation with Redis Pub/Sub, local fallback queue, and retry mechanism."""
 
@@ -84,6 +289,9 @@ class EventBus:
         self._retry_check_interval: float = 2.0
         self._flush_task: Optional[asyncio.Task] = None
         self._retry_task: Optional[asyncio.Task] = None
+        
+        # Create subscription manager
+        self.subscription_manager = EventSubscriptionManager(self)
 
         logger.info("EventBus initialized with retry policy: max_retries=%d, initial_delay=%.1fs",
                    self.retry_policy.max_retries, self.retry_policy.initial_delay)
@@ -708,6 +916,201 @@ class EventBus:
             bool: True if connected to Redis, False otherwise
         """
         return self._is_connected
+
+
+class EventSubscriptionManager:
+    """Manages event subscriptions and delivery across modules.
+    
+    This class provides enhanced subscription management functionality
+    that extends the existing EventBus publish/subscribe mechanisms.
+    """
+    
+    def __init__(self, event_bus: 'EventBus'):
+        """Initialize the event subscription manager.
+        
+        Args:
+            event_bus: The EventBus instance to manage subscriptions for
+        """
+        self.event_bus = event_bus
+        self._subscriptions: Dict[str, List[Dict[str, Any]]] = {}
+        self._service_subscriptions: Dict[str, List[str]] = {}
+        
+    async def subscribe(
+        self, 
+        event_type: str, 
+        handler: Callable[[Dict[str, Any]], Awaitable[None]], 
+        service_name: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """Subscribe to an event type for a specific service.
+        
+        Args:
+            event_type: The type of event to subscribe to
+            handler: The handler function to call when event is received
+            service_name: The name of the service subscribing
+            metadata: Optional metadata about the subscription
+            
+        Returns:
+            bool: True if subscription was successful, False otherwise
+        """
+        try:
+            # Subscribe through the event bus
+            success = await self.event_bus.subscribe(event_type, handler)
+            
+            if success:
+                # Track subscription
+                subscription_info = {
+                    "event_type": event_type,
+                    "service_name": service_name,
+                    "handler": handler,
+                    "metadata": metadata or {},
+                    "subscribed_at": datetime.utcnow()
+                }
+                
+                if event_type not in self._subscriptions:
+                    self._subscriptions[event_type] = []
+                self._subscriptions[event_type].append(subscription_info)
+                
+                if service_name not in self._service_subscriptions:
+                    self._service_subscriptions[service_name] = []
+                self._service_subscriptions[service_name].append(event_type)
+                
+                logger.info(
+                    f"Service '{service_name}' subscribed to event '{event_type}'"
+                )
+                
+            return success
+            
+        except Exception as e:
+            logger.error(
+                f"Error subscribing service '{service_name}' to event '{event_type}': {e}"
+            )
+            return False
+    
+    async def unsubscribe(self, event_type: str, service_name: str) -> bool:
+        """Unsubscribe a service from an event type.
+        
+        Args:
+            event_type: The type of event to unsubscribe from
+            service_name: The name of the service unsubscribing
+            
+        Returns:
+            bool: True if unsubscription was successful, False otherwise
+        """
+        try:
+            # Remove from our tracking
+            if event_type in self._subscriptions:
+                self._subscriptions[event_type] = [
+                    sub for sub in self._subscriptions[event_type]
+                    if sub["service_name"] != service_name
+                ]
+                
+            if service_name in self._service_subscriptions:
+                if event_type in self._service_subscriptions[service_name]:
+                    self._service_subscriptions[service_name].remove(event_type)
+                
+            logger.info(
+                f"Service '{service_name}' unsubscribed from event '{event_type}'"
+            )
+            return True
+            
+        except Exception as e:
+            logger.error(
+                f"Error unsubscribing service '{service_name}' from event '{event_type}': {e}"
+            )
+            return False
+    
+    async def publish_with_retry(
+        self, 
+        event_type: str, 
+        payload: Dict[str, Any],
+        max_retries: int = 3
+    ) -> bool:
+        """Publish an event with retry mechanism.
+        
+        Args:
+            event_type: The type of event to publish
+            payload: The event payload
+            max_retries: Maximum number of retry attempts
+            
+        Returns:
+            bool: True if event was published successfully, False otherwise
+        """
+        for attempt in range(max_retries + 1):
+            try:
+                success = await self.event_bus.publish(event_type, payload)
+                if success:
+                    return True
+                elif attempt < max_retries:
+                    # Wait before retry with exponential backoff
+                    wait_time = (2 ** attempt) + (0.1 * (attempt + 1))
+                    logger.warning(
+                        f"Event publication failed, retrying in {wait_time}s "
+                        f"(attempt {attempt + 1}/{max_retries})"
+                    )
+                    await asyncio.sleep(wait_time)
+                    
+            except Exception as e:
+                logger.error(
+                    f"Error publishing event '{event_type}' (attempt {attempt + 1}): {e}"
+                )
+                if attempt < max_retries:
+                    wait_time = (2 ** attempt) + (0.1 * (attempt + 1))
+                    logger.warning(f"Retrying in {wait_time}s")
+                    await asyncio.sleep(wait_time)
+        
+        logger.error(f"Failed to publish event '{event_type}' after {max_retries} retries")
+        return False
+    
+    def get_subscriptions_for_service(self, service_name: str) -> List[str]:
+        """Get all event types a service is subscribed to.
+        
+        Args:
+            service_name: The name of the service
+            
+        Returns:
+            List[str]: List of event types the service is subscribed to
+        """
+        return self._service_subscriptions.get(service_name, [])
+    
+    def get_subscribers_for_event(self, event_type: str) -> List[Dict[str, Any]]:
+        """Get all subscribers for an event type.
+        
+        Args:
+            event_type: The type of event
+            
+        Returns:
+            List[Dict[str, Any]]: List of subscription information
+        """
+        return self._subscriptions.get(event_type, [])
+    
+    async def unsubscribe_service(self, service_name: str) -> bool:
+        """Unsubscribe a service from all events.
+        
+        Args:
+            service_name: The name of the service to unsubscribe
+            
+        Returns:
+            bool: True if unsubscription was successful, False otherwise
+        """
+        try:
+            event_types = self._service_subscriptions.get(service_name, [])
+            for event_type in event_types:
+                if event_type in self._subscriptions:
+                    self._subscriptions[event_type] = [
+                        sub for sub in self._subscriptions[event_type]
+                        if sub["service_name"] != service_name
+                    ]
+            
+            if service_name in self._service_subscriptions:
+                del self._service_subscriptions[service_name]
+                
+            logger.info(f"Service '{service_name}' unsubscribed from all events")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error unsubscribing service '{service_name}' from all events: {e}")
+            return False
 
 
 # Convenience function for easy usage
