@@ -3,6 +3,8 @@ Achievement system module for the YABOT system.
 
 This module provides achievement tracking and unlocking functionality,
 implementing requirement 2.10 from the modulos-atomicos specification.
+Enhanced with Lucien's sophisticated recognition as per
+ux-enhanced specification task 21.
 """
 
 import uuid
@@ -19,6 +21,12 @@ from src.database.schemas.gamification import (
 )
 from src.events.bus import EventBus
 from src.utils.logger import get_logger
+from src.ui.lucien_voice_generator import (
+    LucienVoiceProfile,
+    generate_lucien_response,
+    RelationshipLevel,
+    LucienCelebration
+)
 
 logger = get_logger(__name__)
 
@@ -306,6 +314,52 @@ class AchievementSystem:
             logger.error("Error checking achievements for user %s: %s", user_id, str(e))
             return []
 
+    async def _generate_lucien_achievement_recognition(self, user_id: str, achievement: Achievement) -> LucienCelebration:
+        """Generate Lucien's sophisticated recognition for an unlocked achievement.
+        
+        Args:
+            user_id: User ID who unlocked the achievement
+            achievement: Achievement that was unlocked
+            
+        Returns:
+            LucienCelebration: Lucien's sophisticated recognition of the achievement
+        """
+        try:
+            # For now, we'll create a basic Lucien voice profile
+            # In a full implementation, this would be based on user's actual relationship with Lucien
+            lucien_profile = LucienVoiceProfile()
+            
+            # Generate context for the achievement recognition
+            lucien_context = {
+                "achievement_title": achievement.title,
+                "achievement_description": achievement.description,
+                "achievement_tier": achievement.tier.value,
+                "reward_besitos": achievement.reward_besitos,
+                "user_id": user_id
+            }
+            
+            # Generate Lucien's response
+            lucien_response = generate_lucien_response(lucien_profile, "achievement_unlocked", lucien_context)
+            
+            # Create LucienCelebration instance
+            celebration = LucienCelebration(
+                achievement_id=achievement.achievement_id,
+                lucien_recognition=lucien_response.response_text if lucien_response and lucien_response.response_text else 
+                                 f"Su logro '{achievement.title}' ha sido registrado apropiadamente.",
+                celebration_style="formal_appreciation"
+            )
+            
+            return celebration
+            
+        except Exception as e:
+            logger.warning("Failed to generate Lucien achievement recognition: %s", str(e))
+            # Fallback to basic recognition
+            return LucienCelebration(
+                achievement_id=achievement.achievement_id,
+                lucien_recognition=f"Su logro '{achievement.title}' ha sido registrado apropiadamente.",
+                celebration_style="formal_appreciation"
+            )
+
     async def unlock_achievement(self, user_id: str, achievement_id: str) -> bool:
         """Manually unlock an achievement for a user.
 
@@ -366,6 +420,10 @@ class AchievementSystem:
                 {"$set": user_achievement.dict()},
                 upsert=True
             )
+
+            # Generate Lucien's sophisticated achievement recognition
+            lucien_recognition = await self._generate_lucien_achievement_recognition(user_id, achievement_def)
+            logger.info("Lucien achievement recognition: %s", lucien_recognition.lucien_recognition)
 
             # Award besitos if specified
             if achievement_def.reward_besitos > 0:

@@ -145,3 +145,25 @@ class Item(BaseModel):
     type: str
     metadata: Optional[ItemMetadata] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class LucienEvaluations(BaseModel):
+    """Stores Lucien's evaluations of a user's progress and worthiness."""
+    user_id: str = Field(..., description="The user ID this evaluation pertains to.")
+    current_evaluation_level: int = Field(default=1, description="The user's current evaluation level according to Lucien.")
+    relationship_state: Dict[str, Any] = Field(default_factory=dict, description="The state of the user's relationship with Lucien.")
+    archetype_assessment: Dict[str, Any] = Field(default_factory=dict, description="Lucien's assessment of the user's archetype.")
+    behavioral_history: List[Dict[str, Any]] = Field(default_factory=list, description="A log of significant user behaviors.")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class DianaEncounters(BaseModel):
+    """Tracks special, earned encounters with Diana."""
+    encounter_id: str = Field(..., description="Unique identifier for the encounter.")
+    user_id: str = Field(..., description="The user ID who experienced the encounter.")
+    trigger_condition: str = Field(..., description="The condition that triggered the encounter.")
+    emotional_significance: float = Field(..., description="The calculated emotional significance of the moment.")
+    encounter_time: datetime = Field(default_factory=datetime.utcnow, description="Timestamp of when the encounter occurred.")
+    impact_metrics: Dict[str, Any] = Field(default_factory=dict, description="Metrics on the impact of the encounter.")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
