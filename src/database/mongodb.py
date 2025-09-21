@@ -78,6 +78,15 @@ class MongoDBHandler:
         logger.debug("Accessing UserItems collection")
         return self._db["user_items"]
 
+    def get_subscriptions_collection(self) -> Collection:
+        """Get the Subscriptions collection for user subscriptions.
+
+        Returns:
+            Collection: MongoDB collection for subscriptions
+        """
+        logger.debug("Accessing Subscriptions collection")
+        return self._db["subscriptions"]
+
     def get_auctions_collection(self) -> Collection:
         """Get the Auctions collection for item auctions.
 

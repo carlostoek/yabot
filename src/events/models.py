@@ -399,6 +399,13 @@ class EmotionalMilestoneReachedEvent(BaseEvent):
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional milestone metadata")
 
 
+class MemoryFragmentCreatedEvent(BaseEvent):
+    """Event published when a new memory fragment is created."""
+    memory_id: str = Field(..., description="Unique ID for the memory fragment")
+    memory_type: str = Field(..., description="Type of memory created")
+    emotional_significance: float = Field(..., description="Significance score of the memory")
+
+
 # Event type constants for easy reference
 EVENT_MODELS = {
     "user_interaction": UserInteractionEvent,
@@ -441,6 +448,7 @@ EVENT_MODELS = {
     "emotional_signature_updated": EmotionalSignatureUpdatedEvent,
     "diana_level_progression": DianaLevelProgressionEvent,
     "emotional_milestone_reached": EmotionalMilestoneReachedEvent,
+    "memory_fragment_created": MemoryFragmentCreatedEvent,
 }
 
 
