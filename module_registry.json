@@ -1,0 +1,94 @@
+{
+  "config": {
+    "name": "config",
+    "module_type": "core",
+    "version": "1.0.0",
+    "dependencies": [],
+    "health_check_endpoint": null,
+    "state": "running",
+    "health_status": "unknown",
+    "last_heartbeat": "2025-09-21T22:57:15.958817",
+    "last_health_check": null,
+    "start_time": "2025-09-21T22:57:15.914871",
+    "restart_count": 0,
+    "metadata": {}
+  },
+  "database": {
+    "name": "database",
+    "module_type": "core",
+    "version": "1.0.0",
+    "dependencies": [
+      "config"
+    ],
+    "health_check_endpoint": null,
+    "state": "running",
+    "health_status": "unknown",
+    "last_heartbeat": "2025-09-21T22:57:15.959100",
+    "last_health_check": null,
+    "start_time": "2025-09-21T22:57:15.915468",
+    "restart_count": 0,
+    "metadata": {}
+  },
+  "event_bus": {
+    "name": "event_bus",
+    "module_type": "core",
+    "version": "1.0.0",
+    "dependencies": [
+      "config"
+    ],
+    "health_check_endpoint": null,
+    "state": "running",
+    "health_status": "unknown",
+    "last_heartbeat": "2025-09-21T22:57:15.959486",
+    "last_health_check": null,
+    "start_time": "2025-09-21T22:57:15.916142",
+    "restart_count": 0,
+    "metadata": {}
+  },
+  "router": {
+    "name": "router",
+    "module_type": "core",
+    "version": "1.0.0",
+    "dependencies": [
+      "user_service"
+    ],
+    "health_check_endpoint": null,
+    "state": "running",
+    "health_status": "unknown",
+    "last_heartbeat": "2025-09-21T22:57:15.959794",
+    "last_health_check": null,
+    "start_time": "2025-09-21T22:57:15.916828",
+    "restart_count": 0,
+    "metadata": {}
+  },
+  "middleware": {
+    "name": "middleware",
+    "module_type": "core",
+    "version": "1.0.0",
+    "dependencies": [
+      "router"
+    ],
+    "health_check_endpoint": null,
+    "state": "running",
+    "health_status": "unknown",
+    "last_heartbeat": "2025-09-21T22:57:15.960023",
+    "last_health_check": null,
+    "start_time": "2025-09-21T22:57:15.917607",
+    "restart_count": 0,
+    "metadata": {}
+  },
+  "error_handler": {
+    "name": "error_handler",
+    "module_type": "core",
+    "version": "1.0.0",
+    "dependencies": [],
+    "health_check_endpoint": null,
+    "state": "running",
+    "health_status": "unknown",
+    "last_heartbeat": "2025-09-21T22:57:15.960250",
+    "last_health_check": null,
+    "start_time": "2025-09-21T22:57:15.918238",
+    "restart_count": 0,
+    "metadata": {}
+  }
+}

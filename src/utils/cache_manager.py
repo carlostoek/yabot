@@ -11,12 +11,14 @@ import asyncio
 import json
 import hashlib
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from redis import asyncio as aioredis
 
 from src.config.manager import ConfigManager
-from src.ui.menu_factory import Menu
+
+if TYPE_CHECKING:
+    from src.ui.menu_factory import Menu
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +94,7 @@ class CacheManager:
         # Use a hash to keep the key length manageable
         return f"menu_cache:{hashlib.md5(key_material.encode()).hexdigest()}"
 
-    async def get_menu(self, menu_id: str, user_context: Dict[str, Any]) -> Optional[Menu]:
+    async def get_menu(self, menu_id: str, user_context: Dict[str, Any]) -> Optional['Menu']:
         """Get a cached menu.
 
         Args:
@@ -123,7 +125,7 @@ class CacheManager:
             logger.error(f"Error getting menu from cache: {e}", exc_info=True)
             return None
 
-    async def set_menu(self, menu: Menu, user_context: Dict[str, Any], ttl: int = 300) -> None:
+    async def set_menu(self, menu: 'Menu', user_context: Dict[str, Any], ttl: int = 300) -> None:
         """Cache a menu.
 
         Args:
@@ -148,6 +150,70 @@ class CacheManager:
             logger.debug(f"Cached menu with key: {cache_key}")
         except Exception as e:
             logger.error(f"Error setting menu in cache: {e}", exc_info=True)
+
+    async def get_value(self, key: str) -> Optional[str]:
+        """Get a value from the cache by key.
+
+        Args:
+            key: The key to retrieve.
+
+        Returns:
+            The value if found, otherwise None.
+        """
+        if not self._is_connected or not self._redis_client:
+            return None
+        try:
+            return await self._redis_client.get(key)
+        except Exception as e:
+            logger.error(f"Error getting value from cache for key '{key}': {e}", exc_info=True)
+            return None
+
+    async def set_value(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
+        """Set a value in the cache.
+
+        Args:
+            key: The key to set.
+            value: The value to store (will be JSON serialized).
+            ttl: Time-to-live in seconds.
+        """
+        if not self._is_connected or not self._redis_client:
+            return
+        try:
+            serialized_value = json.dumps(value, default=str)
+            await self._redis_client.set(key, serialized_value, ex=ttl)
+        except Exception as e:
+            logger.error(f"Error setting value in cache for key '{key}': {e}", exc_info=True)
+
+    async def delete_key(self, key: str) -> None:
+        """Delete a key from the cache.
+
+        Args:
+            key: The key to delete.
+        """
+        if not self._is_connected or not self._redis_client:
+            return
+        try:
+            await self._redis_client.delete(key)
+        except Exception as e:
+            logger.error(f"Error deleting key from cache: {key}: {e}", exc_info=True)
+
+    async def get_keys_by_pattern(self, pattern: str) -> list[str]:
+        """Get a list of keys matching a pattern.
+
+        Args:
+            pattern: The glob-style pattern to match.
+
+        Returns:
+            A list of matching keys.
+        """
+        if not self._is_connected or not self._redis_client:
+            return []
+        try:
+            return await self._redis_client.keys(pattern)
+        except Exception as e:
+            logger.error(f"Error getting keys by pattern '{pattern}': {e}", exc_info=True)
+            return []
+
 
 # Global instance
 cache_manager = CacheManager()

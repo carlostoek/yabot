@@ -250,44 +250,83 @@ class UserService:
     
     async def get_user_context(self, user_id: str) -> Dict[str, Any]:
         """Retrieve complete user context from both databases.
-        
+
         Args:
             user_id (str): User ID
-            
+
         Returns:
             Dict[str, Any]: Complete user context
-            
+
         Raises:
             UserNotFoundError: If user is not found
         """
         logger.debug("Retrieving user context for user: %s", user_id)
-        
+
         try:
             # Get user profile from SQLite
             profile = self._get_user_profile(user_id)
             if not profile:
                 raise UserNotFoundError(f"User profile not found for user: {user_id}")
-            
+
             # Get user state from MongoDB
             state = self._get_user_state(user_id)
             if state is None:
                 raise UserNotFoundError(f"User state not found for user: {user_id}")
-            
+
             # Combine data
             user_context = {
                 "user_id": user_id,
                 "profile": profile,
                 "state": state
             }
-            
+
             logger.debug("Successfully retrieved user context for user: %s", user_id)
             return user_context
-            
+
         except UserNotFoundError:
             raise
         except Exception as e:
             logger.error("Error retrieving user context: %s", str(e))
             raise UserServiceError(f"Failed to retrieve user context: {str(e)}")
+
+    async def get_or_create_user_context(self, user_id: str, telegram_user: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Retrieve user context or create new user if not found.
+
+        Args:
+            user_id (str): User ID
+            telegram_user (Dict[str, Any], optional): Telegram user data for creation
+
+        Returns:
+            Dict[str, Any]: Complete user context
+        """
+        logger.debug("Getting or creating user context for user: %s", user_id)
+
+        try:
+            # Try to get existing user context
+            return await self.get_user_context(user_id)
+        except UserNotFoundError:
+            # User doesn't exist, create a new one
+            logger.info("User not found, creating new user: %s", user_id)
+
+            # Create minimal telegram_user data if not provided
+            if telegram_user is None:
+                telegram_user = {
+                    "id": int(user_id),
+                    "first_name": "Usuario",
+                    "is_bot": False
+                }
+
+            # Create new user
+            try:
+                user_context = await self.create_user(telegram_user)
+                logger.info("Successfully created new user context for: %s", user_id)
+                return user_context
+            except Exception as e:
+                logger.error("Failed to create new user: %s", str(e))
+                raise UserServiceError(f"Failed to create new user: {str(e)}")
+        except Exception as e:
+            logger.error("Error getting or creating user context: %s", str(e))
+            raise UserServiceError(f"Failed to get or create user context: {str(e)}")
     
     def _get_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Get user profile from SQLite database.
@@ -1076,10 +1115,10 @@ class UserService:
         logger.debug("Retrieving Lucien interaction context for user: %s", user_id)
 
         try:
-            # Get user context using existing pattern
-            user_context = await self.get_user_context(user_id)
+            # Get or create user context using safe pattern
+            user_context = await self.get_or_create_user_context(user_id)
             if not user_context:
-                logger.warning("User context not found for Lucien interaction context: %s", user_id)
+                logger.warning("User context could not be retrieved or created for Lucien interaction context: %s", user_id)
                 return None
 
             # Extract Lucien interaction data from user state
@@ -1931,7 +1970,7 @@ class UserService:
             # Get current Lucien interaction context
             lucien_context = await self.get_lucien_interaction_context(user_id)
             if lucien_context is None:
-                logger.error("No Lucien interaction context found for behavioral assessment: %s", user_id)
+                logger.warning("Could not get Lucien interaction context for behavioral assessment: %s", user_id)
                 return False
 
             # Prepare timestamp
@@ -2085,6 +2124,308 @@ class UserService:
         except Exception as e:
             logger.error("Error retrieving behavioral assessment history for user %s: %s", user_id, str(e))
             raise UserServiceError(f"Failed to retrieve behavioral assessment history: {str(e)}")
+
+    # --- Menu Context Management Methods (Task 25 Enhancement) ---
+
+    async def get_user_menu_context(self, user_id: str) -> Dict[str, Any]:
+        """Retrieve user's current menu context for menu navigation and state management.
+
+        This method implements REQ-MENU-003 requirements by providing role-based access
+        control context and user state information needed for menu generation.
+
+        Args:
+            user_id (str): User ID
+
+        Returns:
+            Dict[str, Any]: User menu context containing:
+                - current_menu_id: Currently active menu
+                - navigation_path: User's navigation history
+                - menu_preferences: User's menu display preferences
+                - session_data: Temporary menu-related session data
+                - role: User's role for access control
+                - has_vip: VIP status for premium feature access
+                - narrative_level: Current narrative progression level
+                - worthiness_score: Lucien's evaluation score
+                - besitos_balance: Current virtual currency balance
+                - archetype: User's behavioral archetype
+        """
+        logger.debug("Retrieving menu context for user: %s", user_id)
+
+        try:
+            # Get complete user context
+            user_context = await self.get_user_context(user_id)
+            if not user_context:
+                logger.warning("No user context found for menu context retrieval: %s", user_id)
+                return self._get_default_menu_context()
+
+            # Extract user state
+            user_state = user_context.get("state", {})
+            
+            # Get current menu context from user state
+            menu_context = user_state.get("current_state", {}).get("menu_context", "main_menu")
+            
+            # Get navigation path
+            navigation_path = user_state.get("current_state", {}).get("navigation_path", [])
+            
+            # Get session data
+            session_data = user_state.get("current_state", {}).get("session_data", {})
+            
+            # Get user profile for role information
+            user_profile = user_context.get("profile", {})
+            
+            # Get emotional journey for narrative level
+            emotional_journey = user_state.get("emotional_journey", {})
+            
+            # Get Lucien interaction context for worthiness score
+            lucien_context = user_state.get("lucien_interaction_context", {})
+            worthiness_progression = lucien_context.get("worthiness_progression", {})
+            
+            # Get besitos balance
+            besitos_balance = user_state.get("besitos", 0)
+            
+            # Get archetype from Lucien context
+            archetype_assessment = lucien_context.get("user_archetype_assessment", {})
+            
+            # Compile comprehensive menu context
+            compiled_context = {
+                "user_id": user_id,
+                "current_menu_id": menu_context,
+                "navigation_path": navigation_path,
+                "menu_preferences": user_state.get("preferences", {}),
+                "session_data": session_data,
+                "role": user_profile.get("role", "free_user"),
+                "has_vip": user_profile.get("has_vip", False),
+                "narrative_level": emotional_journey.get("current_level", 1),
+                "worthiness_score": worthiness_progression.get("current_worthiness_score", 0.0),
+                "besitos_balance": besitos_balance,
+                "archetype": archetype_assessment.get("detected_archetype"),
+                "updated_at": user_state.get("updated_at")
+            }
+
+            logger.debug("Successfully retrieved menu context for user: %s", user_id)
+            return compiled_context
+
+        except Exception as e:
+            logger.error("Error retrieving menu context for user %s: %s", user_id, str(e))
+            # Return default context as fallback
+            return self._get_default_menu_context()
+
+    def _get_default_menu_context(self) -> Dict[str, Any]:
+        """Get default menu context for new or error cases."""
+        return {
+            "user_id": "unknown",
+            "current_menu_id": "main_menu",
+            "navigation_path": [],
+            "menu_preferences": {
+                "language": "es",
+                "theme": "default"
+            },
+            "session_data": {},
+            "role": "free_user",
+            "has_vip": False,
+            "narrative_level": 1,
+            "worthiness_score": 0.0,
+            "besitos_balance": 0,
+            "archetype": None,
+            "updated_at": datetime.utcnow().isoformat()
+        }
+
+    async def update_user_menu_context(self, user_id: str, menu_context_updates: Dict[str, Any]) -> bool:
+        """Update user's menu context with new navigation state and preferences.
+
+        This method implements REQ-MENU-003 requirements by managing user menu state
+        and navigation context for role-based access control.
+
+        Args:
+            user_id (str): User ID
+            menu_context_updates (Dict[str, Any]): Menu context updates containing:
+                - current_menu_id: New active menu (optional)
+                - navigation_path: Updated navigation path (optional)
+                - menu_preferences: Updated preferences (optional)
+                - session_data: Updated session data (optional)
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        logger.debug("Updating menu context for user: %s", user_id)
+
+        try:
+            # Prepare state updates for MongoDB
+            state_updates = {}
+            
+            # Update current menu context if provided
+            if "current_menu_id" in menu_context_updates:
+                if "current_state" not in state_updates:
+                    state_updates["current_state"] = {}
+                state_updates["current_state"]["menu_context"] = menu_context_updates["current_menu_id"]
+            
+            # Update navigation path if provided
+            if "navigation_path" in menu_context_updates:
+                if "current_state" not in state_updates:
+                    state_updates["current_state"] = {}
+                state_updates["current_state"]["navigation_path"] = menu_context_updates["navigation_path"]
+            
+            # Update session data if provided
+            if "session_data" in menu_context_updates:
+                if "current_state" not in state_updates:
+                    state_updates["current_state"] = {}
+                state_updates["current_state"]["session_data"] = menu_context_updates["session_data"]
+            
+            # Update menu preferences if provided
+            if "menu_preferences" in menu_context_updates:
+                state_updates["preferences"] = menu_context_updates["menu_preferences"]
+            
+            # Update user state
+            if state_updates:
+                success = await self.update_user_state(user_id, state_updates)
+                if success:
+                    logger.info("Successfully updated menu context for user: %s", user_id)
+                else:
+                    logger.warning("Failed to update menu context for user: %s", user_id)
+                return success
+            else:
+                logger.debug("No menu context updates provided for user: %s", user_id)
+                return True
+
+        except Exception as e:
+            logger.error("Error updating menu context for user %s: %s", user_id, str(e))
+            return False
+
+    async def push_menu_navigation(self, user_id: str, menu_id: str) -> bool:
+        """Push a new menu to the user's navigation path.
+
+        This method manages the user's navigation history for back navigation support.
+
+        Args:
+            user_id (str): User ID
+            menu_id (str): Menu ID to push to navigation path
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        logger.debug("Pushing menu '%s' to navigation path for user: %s", menu_id, user_id)
+
+        try:
+            # Get current menu context
+            current_context = await self.get_user_menu_context(user_id)
+            
+            # Get current navigation path
+            navigation_path = current_context.get("navigation_path", [])
+            
+            # Add current menu to navigation path (avoid duplicates)
+            if navigation_path and navigation_path[-1] != menu_id:
+                navigation_path.append(menu_id)
+            elif not navigation_path:
+                navigation_path.append(menu_id)
+            
+            # Limit navigation path to reasonable size (prevent memory issues)
+            if len(navigation_path) > 10:
+                navigation_path = navigation_path[-10:]
+            
+            # Update menu context with new navigation path
+            updates = {"navigation_path": navigation_path}
+            return await self.update_user_menu_context(user_id, updates)
+
+        except Exception as e:
+            logger.error("Error pushing menu to navigation path for user %s: %s", user_id, str(e))
+            return False
+
+    async def pop_menu_navigation(self, user_id: str) -> Optional[str]:
+        """Pop the last menu from the user's navigation path and return the previous menu.
+
+        This method supports back navigation functionality.
+
+        Args:
+            user_id (str): User ID
+
+        Returns:
+            Optional[str]: Previous menu ID or None if navigation path is empty
+        """
+        logger.debug("Popping menu from navigation path for user: %s", user_id)
+
+        try:
+            # Get current menu context
+            current_context = await self.get_user_menu_context(user_id)
+            
+            # Get current navigation path
+            navigation_path = current_context.get("navigation_path", [])
+            
+            # Pop last menu from navigation path
+            if navigation_path:
+                previous_menu = navigation_path.pop()
+                
+                # Update menu context with new navigation path
+                updates = {"navigation_path": navigation_path}
+                success = await self.update_user_menu_context(user_id, updates)
+                
+                if success:
+                    logger.debug("Successfully popped menu '%s' from navigation path for user: %s", previous_menu, user_id)
+                    return previous_menu
+                else:
+                    logger.warning("Failed to update navigation path after pop for user: %s", user_id)
+                    return None
+            else:
+                logger.debug("Navigation path is empty for user: %s", user_id)
+                return None
+
+        except Exception as e:
+            logger.error("Error popping menu from navigation path for user %s: %s", user_id, str(e))
+            return None
+
+    async def clear_menu_navigation(self, user_id: str) -> bool:
+        """Clear the user's menu navigation path.
+
+        This method is useful when starting a new navigation session or resetting state.
+
+        Args:
+            user_id (str): User ID
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        logger.debug("Clearing navigation path for user: %s", user_id)
+        
+        try:
+            # Update menu context with empty navigation path
+            updates = {"navigation_path": []}
+            return await self.update_user_menu_context(user_id, updates)
+            
+        except Exception as e:
+            logger.error("Error clearing navigation path for user %s: %s", user_id, str(e))
+            return False
+
+    async def update_menu_session_data(self, user_id: str, session_data_updates: Dict[str, Any]) -> bool:
+        """Update user's menu session data with new values.
+
+        This method manages temporary menu-related session data that persists during
+        a user's interaction session.
+
+        Args:
+            user_id (str): User ID
+            session_data_updates (Dict[str, Any]): Session data updates to apply
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        logger.debug("Updating menu session data for user: %s", user_id)
+
+        try:
+            # Get current menu context
+            current_context = await self.get_user_menu_context(user_id)
+            
+            # Get current session data
+            current_session_data = current_context.get("session_data", {})
+            
+            # Merge updates with current session data
+            updated_session_data = {**current_session_data, **session_data_updates}
+            
+            # Update menu context with new session data
+            updates = {"session_data": updated_session_data}
+            return await self.update_user_menu_context(user_id, updates)
+
+        except Exception as e:
+            logger.error("Error updating menu session data for user %s: %s", user_id, str(e))
+            return False
 
     async def analyze_behavioral_patterns(self, user_id: str, analysis_window_days: int = 30) -> Dict[str, Any]:
         """Analyze user's behavioral patterns over a specified time window.

@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 import logging
 import json
 import hashlib
+import asyncio
 from datetime import datetime
 
 # Import Lucien voice generation system for sophisticated interface personality
@@ -213,7 +214,7 @@ class Menu:
             back_target = self.parent_menu_id or (self.navigation_path[-1] if self.navigation_path else "main_menu")
             navigation_items.append(MenuItem(
                 id="nav_back",
-                text="◀️ Atrás",
+                text="<b>◀️ Atrás</b>",
                 action_type=ActionType.CALLBACK,
                 action_data=f"menu:{back_target}",
                 description="Volver al menú anterior",
@@ -224,7 +225,7 @@ class Menu:
         if self.menu_id != "main_menu":
             navigation_items.append(MenuItem(
                 id="nav_home",
-                text="🏠 Inicio",
+                text="<b>🏠 Inicio</b>",
                 action_type=ActionType.CALLBACK,
                 action_data="menu:main_menu",
                 description="Ir al menú principal",
@@ -274,97 +275,77 @@ class MenuBuilder(ABC):
 
 
 class MainMenuBuilder(MenuBuilder):
-    """Builder for main application menu with Lucien voice generation integration."""
+    """Builder for organic unified menu system that shows all options with elegant restrictions."""
 
     def __init__(self):
         """Initialize MainMenuBuilder with Lucien voice profile."""
         self.lucien_profile = LucienVoiceProfile()
 
     def build_menu(self, user_context: Dict[str, Any], **kwargs) -> Menu:
-        """Build main menu based on user role and status."""
+        """Build organic main menu that shows all options with elegant restrictions."""
         try:
             user_context = self._validate_user_context(user_context)
             user_id = user_context.get('user_id', 'unknown')
             user_role = UserRole(user_context.get('role', 'free_user'))
             has_vip = user_context.get('has_vip', False)
+            narrative_level = user_context.get('narrative_level', 1)
+            worthiness_score = user_context.get('worthiness_score', 0.0)
+            besitos_balance = user_context.get('besitos_balance', 100)
 
-            logger.info(f"Building main menu for user {user_id} (role: {user_role.value})")
+            logger.info(f"Building organic menu for user {user_id} (role: {user_role.value}, vip: {has_vip}, level: {narrative_level})")
 
             self._adapt_lucien_voice_to_user(user_context)
 
-            all_items = [
+            # Core navigation items - always visible
+            items = [
                 MenuItem(
-                    id="narrative_main", text="🎭 Historia con Diana", action_type=ActionType.SUBMENU,
-                    action_data="narrative_menu", description="Explora la narrativa interactiva",
-                    required_role=UserRole.FREE_USER
+                    id="historia_diana", text="<b>🎭 Historia con Diana</b>", action_type=ActionType.SUBMENU,
+                    action_data="narrative_menu", description="Tu narrativa personal en evolución",
+                    required_role=UserRole.FREE_USER, icon="🎭"
                 ),
                 MenuItem(
-                    id="inventory", text="🎒 Mi Mochila", action_type=ActionType.CALLBACK,
-                    action_data="show_inventory", description="Ver tus objetos y fragmentos",
-                    required_role=UserRole.FREE_USER
+                    id="experiencias_interactivas", text="<b>🎮 Experiencias Interactivas</b>", action_type=ActionType.SUBMENU,
+                    action_data="experiences_menu", description="Misiones, juegos y desafíos",
+                    required_role=UserRole.FREE_USER, icon="🎮"
                 ),
                 MenuItem(
-                    id="missions", text="🎯 Misiones", action_type=ActionType.CALLBACK,
-                    action_data="show_missions", description="Tus misiones activas",
-                    required_role=UserRole.FREE_USER
+                    id="coleccion_tesoros", text="<b>🏪 Colección de Tesoros</b>", action_type=ActionType.SUBMENU,
+                    action_data="organic_store_menu", description="Fragmentos, joyas y máscaras emocionales",
+                    required_role=UserRole.FREE_USER, icon="🏪"
                 ),
                 MenuItem(
-                    id="divan_access", text="🛋️ Mi Diván", action_type=ActionType.SUBMENU,
-                    action_data="divan_menu", description="Acceso exclusivo VIP",
-                    required_role=UserRole.VIP_USER, required_vip=True, required_level=4,
-                    required_worthiness=0.6
-                ),
-                MenuItem(
-                    id="store", text="🏪 Tienda", action_type=ActionType.SUBMENU,
-                    action_data="store_menu", description="Compra objetos y mejoras",
-                    required_role=UserRole.FREE_USER
-                ),
-                MenuItem(
-                    id="daily_gift", text="🎁 Regalo Diario", action_type=ActionType.CALLBACK,
-                    action_data="daily_gift", description="Reclama tu regalo diario",
-                    required_role=UserRole.FREE_USER
-                ),
-                MenuItem(
-                    id="profile", text="👤 Mi Perfil", action_type=ActionType.SUBMENU,
-                    action_data="profile_menu", description="Gestiona tu perfil",
-                    required_role=UserRole.FREE_USER
-                ),
-                MenuItem(
-                    id="admin_panel", text="⚙️ Panel Admin", action_type=ActionType.SUBMENU,
-                    action_data="admin_menu", description="Herramientas administrativas",
-                    required_role=UserRole.ADMIN, icon="⚙️"
+                    id="universo_personal", text="<b>🎒 Mi Universo Personal</b>", action_type=ActionType.SUBMENU,
+                    action_data="personal_universe_menu", description="Tu progreso y tesoros acumulados",
+                    required_role=UserRole.FREE_USER, icon="🎒"
                 )
             ]
 
-            processed_items = []
-            for item in all_items:
-                if item.required_vip and not has_vip:
-                    item.text = f"{item.text} 💎"
-                    item.action_type = ActionType.CALLBACK
-                    item.action_data = "show_vip_upgrade"
-                    item.description = "Conviértase en VIP para acceder a contenido exclusivo."
-                    
-                    prompt_context = user_context.copy()
-                    prompt_context["menu_context"] = "vip_upgrade_prompt"
-                    item.lucien_voice_text = self._generate_lucien_menu_text(
-                        "vip_prompt", 
-                        "Ciertos privilegios están reservados para aquellos de un calibre... superior. Quizás desee usted unirse a ese círculo.",
-                        prompt_context
-                    )
-                    processed_items.append(item)
-                    continue
+            # Add El Diván with organic worthiness explanation if not accessible
+            divan_item = self._create_divan_menu_item(user_context)
+            items.append(divan_item)
 
-                if self._is_visible(item, user_context):
-                    item.lucien_voice_text = self._generate_lucien_menu_text(
-                        item.id, item.description, user_context
-                    )
-                    processed_items.append(item)
+            # Add admin panel for admins
+            if user_role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+                items.append(MenuItem(
+                    id="admin_panel", text="<b>⚙️ Panel Admin</b>", action_type=ActionType.SUBMENU,
+                    action_data="admin_menu", description="Herramientas administrativas",
+                    required_role=UserRole.ADMIN, icon="⚙️"
+                ))
+
+            # Process items with Lucien voice enhancements
+            processed_items = []
+            for item in items:
+                item.lucien_voice_text = self._generate_lucien_menu_text(
+                    item.id, item.description, user_context
+                )
+                processed_items.append(item)
 
             lucien_header = self._generate_lucien_welcome_message(user_context)
             lucien_footer = self._generate_lucien_footer_message(user_context)
 
             menu = Menu(
-                menu_id="main_menu", title="🏠 Menú Principal", description="Bienvenido al mundo de Diana",
+                menu_id="main_menu", title="🏠 Tu Mundo con Diana",
+                description="Un universo de posibilidades esperándote",
                 menu_type=MenuType.MAIN, required_role=UserRole.FREE_USER, items=processed_items,
                 header_text=lucien_header, footer_text=lucien_footer, navigation_path=[]
             )
@@ -374,34 +355,223 @@ class MainMenuBuilder(MenuBuilder):
 
         except Exception as e:
             self._log_menu_creation("main_menu", user_context.get('user_id', 'unknown'), False, str(e))
-            raise MenuGenerationError(f"Failed to build main menu: {str(e)}") from e
+            raise MenuGenerationError(f"Failed to build main menu: {str(e)}")
 
-    def _user_has_access(self, user_role: UserRole, required_role: UserRole) -> bool:
-        """Check if user role has access to required role."""
-        role_hierarchy = {
-            UserRole.GUEST: 0, UserRole.FREE_USER: 1, UserRole.VIP_USER: 2,
-            UserRole.ADMIN: 3, UserRole.SUPER_ADMIN: 4
-        }
-        return role_hierarchy.get(user_role, 0) >= role_hierarchy.get(required_role, 1)
+    def build_organic_store_menu(self, user_context: Dict[str, Any], **kwargs) -> Menu:
+        """Build unified store menu showing all items with elegant restrictions."""
+        try:
+            user_context = self._validate_user_context(user_context)
+            user_id = user_context.get('user_id', 'unknown')
+            has_vip = user_context.get('has_vip', False)
+            narrative_level = user_context.get('narrative_level', 1)
+            worthiness_score = user_context.get('worthiness_score', 0.0)
+            besitos_balance = user_context.get('besitos_balance', 100)
 
-    def _is_visible(self, item: MenuItem, user_context: Dict[str, Any]) -> bool:
-        """Check if a menu item should be visible based on role and Lucien's evaluation."""
-        user_role = UserRole(user_context.get('role', 'free_user'))
+            items = [
+                # Fragmentos Narrativos - Tier system
+                MenuItem(
+                    id="fragmentos_basicos", text="<b>📚 Fragmentos de Memoria</b>", action_type=ActionType.CALLBACK,
+                    action_data="show_narrative_fragments", description="Momentos especiales revividos",
+                    required_role=UserRole.FREE_USER, requires_besitos=50
+                ),
+                MenuItem(
+                    id="fragmentos_premium", text="<b>📚 Fragmentos Íntimos</b> ✨", action_type=ActionType.CALLBACK,
+                    action_data=self._create_worthiness_check("premium_fragments", worthiness_score, 0.4),
+                    description="Recuerdos de profundidad excepcional",
+                    required_role=UserRole.FREE_USER, requires_besitos=150, required_worthiness=0.4
+                ),
+
+                # Joyas Emocionales - Progressive access
+                MenuItem(
+                    id="joyas_exploracion", text="<b>💎 Joyas de Exploración</b>", action_type=ActionType.CALLBACK,
+                    action_data="show_exploration_gems", description="Potenciadores de conexión emocional",
+                    required_role=UserRole.FREE_USER, requires_besitos=80
+                ),
+                MenuItem(
+                    id="joyas_intimidad", text="<b>💎 Joyas de Intimidad</b> ✨", action_type=ActionType.CALLBACK,
+                    action_data=self._create_worthiness_check("intimacy_gems", worthiness_score, 0.6),
+                    description="Catalizadores de profundidad emocional suprema",
+                    required_role=UserRole.FREE_USER, requires_besitos=300, required_worthiness=0.6
+                ),
+
+                # Máscaras de Personalidad
+                MenuItem(
+                    id="mascaras_expresion", text="<b>🎭 Máscaras de Expresión</b>", action_type=ActionType.CALLBACK,
+                    action_data="show_expression_masks", description="Nuevas formas de comunicarte con Diana",
+                    required_role=UserRole.FREE_USER, requires_besitos=120
+                ),
+
+                # Círculo Íntimo - VIP section with elegant presentation
+                MenuItem(
+                    id="circulo_intimo", text="<b>✨ Círculo Íntimo</b> 💫", action_type=ActionType.SUBMENU,
+                    action_data=self._create_vip_access_check("circulo_intimo", has_vip, worthiness_score),
+                    description="Experiencias reservadas para los más sofisticados",
+                    required_role=UserRole.FREE_USER, required_worthiness=0.7
+                )
+            ]
+
+            # Process each item with appropriate restrictions and Lucien voice
+            processed_items = []
+            for item in items:
+                processed_item = self._process_store_item(item, user_context)
+                processed_items.append(processed_item)
+
+            lucien_header = self._generate_store_header(user_context)
+            lucien_footer = self._generate_store_footer(user_context)
+
+            menu = Menu(
+                menu_id="organic_store_menu", title="🏪 Colección de Tesoros",
+                description="Cada objeto cuenta una historia, cada adquisición revela carácter",
+                menu_type=MenuType.STORE, required_role=UserRole.FREE_USER, items=processed_items,
+                header_text=lucien_header, footer_text=lucien_footer,
+                parent_menu_id="main_menu"
+            )
+
+            self._log_menu_creation("organic_store_menu", user_id, True)
+            return menu
+
+        except Exception as e:
+            self._log_menu_creation("organic_store_menu", user_context.get('user_id', 'unknown'), False, str(e))
+            raise MenuGenerationError(f"Failed to build organic store menu: {str(e)}")
+
+    def _create_divan_menu_item(self, user_context: Dict[str, Any]) -> MenuItem:
+        """Create El Diván menu item with organic access explanation."""
         has_vip = user_context.get('has_vip', False)
-        narrative_level = user_context.get('narrative_level', 0)
+        worthiness_score = user_context.get('worthiness_score', 0.0)
+        narrative_level = user_context.get('narrative_level', 1)
 
-        if not self._user_has_access(user_role, item.required_role):
-            return False
-        if item.required_vip and not has_vip:
-            return False
-        if narrative_level < item.required_level:
-            return False
+        if has_vip and narrative_level >= 4 and worthiness_score >= 0.6:
+            # Full access
+            return MenuItem(
+                id="el_divan_acceso", text="<b>🛋️ El Diván</b>", action_type=ActionType.SUBMENU,
+                action_data="divan_menu", description="Tu espacio íntimo de comprensión profunda",
+                required_role=UserRole.FREE_USER, icon="🛋️"
+            )
+        else:
+            # Visible but with Lucien's elegant explanation
+            worthiness_explanation = self._generate_worthiness_explanation(user_context)
+            return MenuItem(
+                id="el_divan_evaluacion", text="<b>🛋️ El Diván</b> ✨", action_type=ActionType.CALLBACK,
+                action_data="explain_divan_worthiness",
+                description="Un privilegio que se gana a través del desarrollo personal",
+                required_role=UserRole.FREE_USER, icon="🛋️",
+                lucien_voice_text=worthiness_explanation
+            )
 
-        worthiness_score = self.lucien_profile.worthiness_progression.current_worthiness_score
-        if worthiness_score < item.required_worthiness:
-            return False
+    def _create_worthiness_check(self, item_id: str, current_worthiness: float, required_worthiness: float) -> str:
+        """Create action data for worthiness-gated items."""
+        if current_worthiness >= required_worthiness:
+            return f"access_granted:{item_id}"
+        else:
+            return f"worthiness_explanation:{item_id}:{required_worthiness}"
 
-        return True
+    def _create_vip_access_check(self, item_id: str, has_vip: bool, worthiness_score: float) -> str:
+        """Create action data for VIP-gated items."""
+        if has_vip and worthiness_score >= 0.5:
+            return f"vip_access:{item_id}"
+        else:
+            return f"vip_invitation:{item_id}"
+
+    def _process_store_item(self, item: MenuItem, user_context: Dict[str, Any]) -> MenuItem:
+        """Process store item to add appropriate access logic and Lucien voice."""
+        has_vip = user_context.get('has_vip', False)
+        worthiness_score = user_context.get('worthiness_score', 0.0)
+        besitos_balance = user_context.get('besitos_balance', 100)
+
+        # Check if user meets requirements
+        can_access = True
+        restriction_reason = None
+
+        if item.required_worthiness > worthiness_score:
+            can_access = False
+            restriction_reason = "worthiness"
+        elif item.requires_besitos > besitos_balance:
+            can_access = False
+            restriction_reason = "besitos"
+        elif item.required_vip and not has_vip:
+            can_access = False
+            restriction_reason = "vip_membership"
+
+        if not can_access:
+            # Modify item to show restriction elegantly
+            item.lucien_voice_text = self._generate_restriction_explanation(
+                item.id, restriction_reason, user_context
+            )
+            # Change action to explanation instead of purchase
+            item.action_data = f"explain_restriction:{item.id}:{restriction_reason}"
+        else:
+            item.lucien_voice_text = self._generate_lucien_menu_text(
+                item.id, item.description, user_context
+            )
+
+        return item
+
+    def _generate_worthiness_explanation(self, user_context: Dict[str, Any]) -> str:
+        """Generate Lucien's explanation for worthiness requirements."""
+        worthiness_score = user_context.get('worthiness_score', 0.0)
+        required_worthiness = 0.6
+
+        if worthiness_score < 0.2:
+            return (
+                "<b>El Diván</b> representa un nivel de intimidad y comprensión que debe ganarse "
+                "a través del desarrollo personal. Sus interacciones actuales sugieren que está "
+                "en las etapas iniciales de este viaje de sofisticación."
+            )
+        elif worthiness_score < 0.4:
+            return (
+                "<b>El Diván</b> está reservado para quienes han demostrado un nivel excepcional "
+                "de madurez emocional. Su progreso es notable, pero aún requiere mayor "
+                "profundidad en su comprensión."
+            )
+        else:
+            return (
+                "<b>El Diván</b> reconoce su crecimiento, pero requiere la membresía VIP para "
+                "completar su acceso. Su desarrollo personal ya demuestra la sofisticación "
+                "necesaria para estos privilegios."
+            )
+
+    def _generate_restriction_explanation(self, item_id: str, restriction_type: str, user_context: Dict[str, Any]) -> str:
+        """Generate Lucien's elegant explanation for item restrictions."""
+        worthiness_score = user_context.get('worthiness_score', 0.0)
+        besitos_balance = user_context.get('besitos_balance', 100)
+
+        if restriction_type == "worthiness":
+            return (
+                "Ciertos tesoros requieren un nivel de sofisticación que se desarrolla "
+                "naturalmente a través de sus interacciones. Su crecimiento personal "
+                "determinará cuándo estos privilegios se revelan."
+            )
+        elif restriction_type == "besitos":
+            return (
+                "Este tesoro particular requiere una inversión más significativa de besitos. "
+                "La paciencia y el progreso en sus misiones le proporcionarán los recursos necesarios."
+            )
+        elif restriction_type == "vip_membership":
+            return (
+                "Algunas experiencias están cuidadosamente curadas para aquellos que han "
+                "elegido un compromiso más profundo con este mundo. La membresía representa "
+                "una invitación a niveles de sofisticación excepcionales."
+            )
+        else:
+            return "Este privilegio requiere desarrollo adicional en múltiples áreas."
+
+    def _generate_store_header(self, user_context: Dict[str, Any]) -> str:
+        """Generate Lucien's sophisticated store introduction."""
+        worthiness_score = user_context.get('worthiness_score', 0.0)
+        besitos_balance = user_context.get('besitos_balance', 100)
+
+        return (
+            f"<b>✨ Cada objeto en esta colección refleja un aspecto de la sofisticación personal. "
+            f"Sus {besitos_balance} besitos y su nivel actual de development determinan "
+            f"qué tesoros resonarán con su journey. ✨</b>"
+        )
+
+    def _generate_store_footer(self, user_context: Dict[str, Any]) -> str:
+        """Generate Lucien's sophisticated store conclusion."""
+        return (
+            "<i>Recuerde: las adquisiciones más valiosas no son las que puede permitirse, "
+            "sino las que ha ganado a través de su evolución personal.</i>"
+        )
 
     def _adapt_lucien_voice_to_user(self, user_context: Dict[str, Any]) -> None:
         """Adapt Lucien's voice profile based on user characteristics."""
@@ -421,7 +591,6 @@ class MainMenuBuilder(MenuBuilder):
 
         except Exception as e:
             logger.warning(f"Failed to adapt Lucien voice profile: {e}")
-            pass
 
     def _generate_lucien_menu_text(self, menu_context: str, base_observation: str, user_context: Dict[str, Any]) -> str:
         """Generate Lucien's sophisticated voice text for menu items."""
@@ -443,38 +612,34 @@ class MainMenuBuilder(MenuBuilder):
                 self.lucien_profile, "/start", user_context
             )
             if lucien_response and lucien_response.response_text:
-                return f"✨ {lucien_response.response_text} ✨"
-            
+                return f"<b>✨ {lucien_response.response_text} ✨</b>"
+
             relationship_level = self.lucien_profile.user_relationship_level
             if relationship_level == RelationshipLevel.TRUSTED_CONFIDANT:
-                return "✨ Bienvenido nuevamente. Es un placer genuine continuar nuestro diálogo de sofisticación excepcional ✨"
+                return "<b>✨ Bienvenido a su mundo personal. Cada puerta aquí refleja su journey y sophistication excepcional ✨</b>"
             elif relationship_level == RelationshipLevel.RELUCTANT_APPRECIATOR:
-                return "✨ Ah, regresa usted. Sus interacciones previas han sido... menos decepcionantes de lo que anticipé ✨"
+                return "<b>✨ Sus opciones se expanden conforme su development progresa. Algunas posibilidades aguardan mayor sophistication ✨</b>"
             else:
-                return "✨ Permítame evaluar si usted posee la sofisticación necesaria para los privilegios que busca ✨"
+                return "<b>✨ Este mundo se revela gradualmente a quienes demuestran worthiness. Cada elección será cuidadosamente evaluada ✨</b>"
         except Exception as e:
             logger.warning(f"Failed to generate Lucien welcome message: {e}")
-            return "✨ Bienvenido al mundo de Diana ✨"
+            return "<b>✨ Bienvenido a tu mundo con Diana ✨</b>"
 
     def _generate_lucien_footer_message(self, user_context: Dict[str, Any]) -> str:
         """Generate Lucien's sophisticated footer message for the main menu."""
         try:
-            lucien_response = generate_lucien_response(
-                self.lucien_profile, "footer_message", user_context
-            )
-            if lucien_response and lucien_response.response_text:
-                return lucien_response.response_text
-            
-            relationship_level = self.lucien_profile.user_relationship_level
-            if relationship_level == RelationshipLevel.TRUSTED_CONFIDANT:
-                return "Sus elecciones reflejan el discernimiento que he llegado a appreciate en usted."
-            elif relationship_level == RelationshipLevel.RELUCTANT_APPRECIATOR:
-                return "Observaré sus elecciones... podrían revelar mayor sophistication."
+            worthiness_score = user_context.get('worthiness_score', 0.0)
+            has_vip = user_context.get('has_vip', False)
+
+            if has_vip and worthiness_score >= 0.8:
+                return "<i>Sus elecciones reflejan el discernimiento y sophistication que he llegado a appreciate profundamente.</i>"
+            elif worthiness_score >= 0.5:
+                return "<i>Su development continúa impresionándome. Nuevas posibilidades se revelarán pronto.</i>"
             else:
-                return "Cada selección será evaluada y contribuirá a mi assessment de su character."
+                return "<i>Cada interacción contribuye a su evaluation. La paciencia y authenticity abren todas las puertas.</i>"
         except Exception as e:
             logger.warning(f"Failed to generate Lucien footer message: {e}")
-            return "Selecciona una opción para continuar"
+            return "<i>Selecciona una opción para continuar tu journey</i>"
 
 
 class NarrativeMenuBuilder(MenuBuilder):
@@ -498,7 +663,7 @@ class NarrativeMenuBuilder(MenuBuilder):
             # Continuar Historia
             items.append(MenuItem(
                 id="continue_story",
-                text="📖 Continuar Historia",
+                text="<b>📖 Continuar Historia</b>",
                 action_type=ActionType.NARRATIVE_ACTION,
                 action_data=f"continue_from:{current_fragment}",
                 description="Continúa donde te quedaste",
@@ -509,7 +674,7 @@ class NarrativeMenuBuilder(MenuBuilder):
             if narrative_level >= 1:
                 items.append(MenuItem(
                     id="kinkys_level1",
-                    text="🌸 Los Kinkys - Nivel 1",
+                    text="<b>🌸 Los Kinkys - Nivel 1</b>",
                     action_type=ActionType.NARRATIVE_ACTION,
                     action_data="level:kinkys_1",
                     description="El Umbral del Espejo",
@@ -520,7 +685,7 @@ class NarrativeMenuBuilder(MenuBuilder):
             if narrative_level >= 2:
                 items.append(MenuItem(
                     id="kinkys_level2",
-                    text="🌸 Los Kinkys - Nivel 2",
+                    text="<b>🌸 Los Kinkys - Nivel 2</b>",
                     action_type=ActionType.NARRATIVE_ACTION,
                     action_data="level:kinkys_2",
                     description="El Regreso del Observador",
@@ -531,7 +696,7 @@ class NarrativeMenuBuilder(MenuBuilder):
             if narrative_level >= 3:
                 items.append(MenuItem(
                     id="kinkys_level3",
-                    text="🌸 Los Kinkys - Nivel 3",
+                    text="<b>🌸 Los Kinkys - Nivel 3</b>",
                     action_type=ActionType.NARRATIVE_ACTION,
                     action_data="level:kinkys_3",
                     description="El Espejo del Deseo",
@@ -543,7 +708,7 @@ class NarrativeMenuBuilder(MenuBuilder):
             if has_vip and narrative_level >= 4:
                 items.append(MenuItem(
                     id="divan_level4",
-                    text="🛋️ El Diván - Nivel 4",
+                    text="<b>🛋️ El Diván - Nivel 4</b>",
                     action_type=ActionType.NARRATIVE_ACTION,
                     action_data="level:divan_4",
                     description="La Comprensión en Capas",
@@ -555,7 +720,7 @@ class NarrativeMenuBuilder(MenuBuilder):
             if has_vip and narrative_level >= 5:
                 items.append(MenuItem(
                     id="divan_level5",
-                    text="🛋️ El Diván - Nivel 5",
+                    text="<b>🛋️ El Diván - Nivel 5</b>",
                     action_type=ActionType.NARRATIVE_ACTION,
                     action_data="level:divan_5",
                     description="La Profundización Suprema",
@@ -567,7 +732,7 @@ class NarrativeMenuBuilder(MenuBuilder):
             if has_vip and narrative_level >= 6:
                 items.append(MenuItem(
                     id="circulo_intimo",
-                    text="💫 Círculo Íntimo",
+                    text="<b>💫 Círculo Íntimo</b>",
                     action_type=ActionType.NARRATIVE_ACTION,
                     action_data="level:circulo_intimo",
                     description="Más Allá del Final",
@@ -580,7 +745,7 @@ class NarrativeMenuBuilder(MenuBuilder):
             if len(completed_fragments) > 0:
                 items.append(MenuItem(
                     id="memory_fragments",
-                    text="🧩 Fragmentos de Memoria",
+                    text="<b>🧩 Fragmentos de Memoria</b>",
                     action_type=ActionType.CALLBACK,
                     action_data="show_memory_fragments",
                     description="Revive momentos especiales",
@@ -591,7 +756,7 @@ class NarrativeMenuBuilder(MenuBuilder):
             if has_vip:
                 items.append(MenuItem(
                     id="emotional_analysis",
-                    text="💭 Análisis Emocional",
+                    text="<b>💭 Análisis Emocional</b>",
                     action_type=ActionType.CALLBACK,
                     action_data="show_emotional_analysis",
                     description="Tu perfil emocional con Diana",
@@ -606,7 +771,7 @@ class NarrativeMenuBuilder(MenuBuilder):
                 menu_type=MenuType.NARRATIVE,
                 required_role=UserRole.FREE_USER,
                 items=items,
-                header_text="🌟 Explora tu historia con Diana 🌟",
+                header_text="<b>🌟 Explora tu historia con Diana 🌟</b>",
                 is_dynamic=True,
                 parent_menu_id=parent_menu_id,
                 navigation_path=kwargs.get('navigation_path', [])
@@ -638,7 +803,7 @@ class AdminMenuBuilder(MenuBuilder):
             # Gestión de Usuarios
             items.append(MenuItem(
                 id="user_management",
-                text="👥 Gestión de Usuarios",
+                text="<b>👥 Gestión de Usuarios</b>",
                 action_type=ActionType.SUBMENU,
                 action_data="admin_users_menu",
                 description="Administrar usuarios del sistema",
@@ -648,7 +813,7 @@ class AdminMenuBuilder(MenuBuilder):
             # Gestión de Contenido Narrativo
             items.append(MenuItem(
                 id="narrative_management",
-                text="📝 Gestión de Narrativa",
+                text="<b>📝 Gestión de Narrativa</b>",
                 action_type=ActionType.SUBMENU,
                 action_data="admin_narrative_menu",
                 description="Crear y editar contenido narrativo",
@@ -658,7 +823,7 @@ class AdminMenuBuilder(MenuBuilder):
             # Análisis de Comportamiento
             items.append(MenuItem(
                 id="behavior_analytics",
-                text="📊 Análisis Comportamental",
+                text="<b>📊 Análisis Comportamental</b>",
                 action_type=ActionType.CALLBACK,
                 action_data="show_behavior_analytics",
                 description="Estadísticas de comportamiento emocional",
@@ -668,7 +833,7 @@ class AdminMenuBuilder(MenuBuilder):
             # Sistema de Recompensas
             items.append(MenuItem(
                 id="reward_management",
-                text="🎁 Gestión de Recompensas",
+                text="<b>🎁 Gestión de Recompensas</b>",
                 action_type=ActionType.SUBMENU,
                 action_data="admin_rewards_menu",
                 description="Configurar sistema de recompensas",
@@ -678,7 +843,7 @@ class AdminMenuBuilder(MenuBuilder):
             # Configuración del Sistema
             items.append(MenuItem(
                 id="system_config",
-                text="⚙️ Configuración",
+                text="<b>⚙️ Configuración</b>",
                 action_type=ActionType.SUBMENU,
                 action_data="admin_config_menu",
                 description="Configuración del sistema",
@@ -689,7 +854,7 @@ class AdminMenuBuilder(MenuBuilder):
             if user_role == UserRole.SUPER_ADMIN:
                 items.append(MenuItem(
                     id="system_monitoring",
-                    text="📈 Monitoreo del Sistema",
+                    text="<b>📈 Monitoreo del Sistema</b>",
                     action_type=ActionType.CALLBACK,
                     action_data="show_system_monitoring",
                     description="Logs y métricas del sistema",
@@ -700,7 +865,7 @@ class AdminMenuBuilder(MenuBuilder):
             if user_role == UserRole.SUPER_ADMIN:
                 items.append(MenuItem(
                     id="database_management",
-                    text="🗄️ Gestión BD",
+                    text="<b>🗄️ Gestión BD</b>",
                     action_type=ActionType.SUBMENU,
                     action_data="admin_database_menu",
                     description="Administración de base de datos",
@@ -714,7 +879,7 @@ class AdminMenuBuilder(MenuBuilder):
                 menu_type=MenuType.ADMIN,
                 required_role=UserRole.ADMIN,
                 items=items,
-                header_text="🔧 Panel de Administración 🔧"
+                header_text="<b>🔧 Panel de Administración 🔧</b>"
             )
 
             self._log_menu_creation("admin_menu", user_id, True)
@@ -737,7 +902,7 @@ class VIPMenuBuilder(MenuBuilder):
         # Acceso al Diván
         items.append(MenuItem(
             id="divan_exclusive",
-            text="🛋️ El Diván Privado",
+            text="<b>🛋️ El Diván Privado</b>",
             action_type=ActionType.NARRATIVE_ACTION,
             action_data="divan:private_access",
             description="Tu espacio íntimo con Diana",
@@ -747,7 +912,7 @@ class VIPMenuBuilder(MenuBuilder):
         # Archivo Personal de Diana
         items.append(MenuItem(
             id="diana_personal_archive",
-            text="📚 Archivo Personal de Diana",
+            text="<b>📚 Archivo Personal de Diana</b>",
             action_type=ActionType.CALLBACK,
             action_data="show_diana_archive",
             description="Memorias íntimas y reflexiones",
@@ -759,7 +924,7 @@ class VIPMenuBuilder(MenuBuilder):
         if narrative_level >= 5:
             items.append(MenuItem(
                 id="diana_intimate_diary",
-                text="📖 Diario Íntimo de Diana",
+                text="<b>📖 Diario Íntimo de Diana</b>",
                 action_type=ActionType.CALLBACK,
                 action_data="show_intimate_diary",
                 description="Pensamientos más profundos",
@@ -770,7 +935,7 @@ class VIPMenuBuilder(MenuBuilder):
         # Contenido Exclusivo
         items.append(MenuItem(
             id="exclusive_content",
-            text="✨ Contenido Exclusivo",
+            text="<b>✨ Contenido Exclusivo</b>",
             action_type=ActionType.SUBMENU,
             action_data="vip_exclusive_menu",
             description="Solo para miembros VIP",
@@ -780,7 +945,7 @@ class VIPMenuBuilder(MenuBuilder):
         # Sesiones Personalizadas
         items.append(MenuItem(
             id="personalized_sessions",
-            text="💫 Sesiones Personalizadas",
+            text="<b>💫 Sesiones Personalizadas</b>",
             action_type=ActionType.CALLBACK,
             action_data="start_personalized_session",
             description="Experiencias adaptadas a ti",
@@ -794,8 +959,8 @@ class VIPMenuBuilder(MenuBuilder):
             menu_type=MenuType.VIP,
             required_role=UserRole.VIP_USER,
             items=items,
-            header_text="💎 Bienvenido al Área VIP 💎",
-            footer_text="Contenido exclusivo diseñado para ti"
+            header_text="<b>💎 Bienvenido al Área VIP 💎</b>",
+            footer_text="<i>Contenido exclusivo diseñado para ti</i>"
         )
 
 
@@ -852,145 +1017,219 @@ class MenuValidationUtils:
 from src.utils.cache_manager import cache_manager
 
 
+
 class MenuFactory:
     """Main factory class for generating menus based on context."""
 
     def __init__(self):
         """Initialize menu factory with builders."""
         self.builders = {
-            MenuType.MAIN: MainMenuBuilder(),
+            MenuType.MAIN: MainMenuBuilder(),  # Use organic main menu builder
             MenuType.NARRATIVE: NarrativeMenuBuilder(),
             MenuType.ADMIN: AdminMenuBuilder(),
-            MenuType.VIP: VIPMenuBuilder()
+            MenuType.VIP: VIPMenuBuilder(),
+            MenuType.STORE: MainMenuBuilder()  # Use organic main menu builder for store too
         }
 
         self.menu_definitions = self._initialize_menu_definitions()
         self.cache_manager = cache_manager
-        asyncio.create_task(self.cache_manager.connect())
+        # Initialize cache connection only when running in async context
+        try:
+            asyncio.create_task(self.cache_manager.connect())
+        except RuntimeError:
+            # No event loop running, cache will connect when needed
+            pass
 
         # Callback data mapping for compression
         self.callback_mapping = {}
 
     def _initialize_menu_definitions(self) -> Dict[str, Dict]:
-        """Initialize static menu definitions."""
+        """Initialize static menu definitions for organic menu system."""
         return {
-            "profile_menu": {
-                "title": "👤 Mi Perfil",
+            "personal_universe_menu": {
+                "title": "<b>🎒 Mi Universo Personal</b>",
                 "items": [
                     {
-                        "id": "view_stats",
-                        "text": "📊 Mis Estadísticas",
-                        "action": "show_user_stats",
-                        "description": "Ver tu progreso y logros"
+                        "id": "progreso_diana",
+                        "text": "<b>📊 Mi Progreso con Diana</b>",
+                        "action": "show_diana_progress",
+                        "description": "Tu evolución emocional y narrative level"
                     },
                     {
-                        "id": "emotional_profile",
-                        "text": "💭 Perfil Emocional",
-                        "action": "show_emotional_profile",
-                        "description": "Tu firma emocional única"
+                        "id": "tesoro_besitos",
+                        "text": "<b>💰 Tesoro de Besitos</b>",
+                        "action": "show_besitos_wallet",
+                        "description": "Tu moneda emocional y transacciones"
                     },
                     {
-                        "id": "achievements",
-                        "text": "🏆 Logros",
-                        "action": "show_achievements",
-                        "description": "Tus logros desbloqueados"
+                        "id": "perfil_emocional",
+                        "text": "<b>🧠 Perfil Emocional</b>",
+                        "action": "show_emotional_signature",
+                        "description": "Tu firma emocional única con Diana"
                     },
                     {
-                        "id": "settings",
-                        "text": "⚙️ Configuración",
-                        "action": "show_settings",
+                        "id": "logros_desbloqueados",
+                        "text": "<b>🏆 Logros Desbloqueados</b>",
+                        "action": "show_achievements_gallery",
+                        "description": "Hitos de tu journey personal"
+                    },
+                    {
+                        "id": "configuracion_avanzada",
+                        "text": "<b>⚙️ Configuración Avanzada</b>",
+                        "action": "show_advanced_settings",
                         "description": "Personaliza tu experiencia"
                     }
                 ]
             },
 
-            "store_menu": {
-                "title": "🏪 Tienda",
+            "experiences_menu": {
+                "title": "<b>🎮 Experiencias Interactivas</b>",
                 "items": [
                     {
-                        "id": "narrative_items",
-                        "text": "📚 Objetos Narrativos",
-                        "action": "show_narrative_store",
-                        "description": "Fragmentos y memorias especiales"
+                        "id": "mis_misiones",
+                        "text": "<b>🎯 Mis Misiones</b>",
+                        "action": "show_active_missions",
+                        "description": "Desafíos actuales y próximos objetivos"
                     },
                     {
-                        "id": "emotional_boosts",
-                        "text": "💫 Potenciadores Emocionales",
-                        "action": "show_emotional_store",
-                        "description": "Mejora tu conexión con Diana"
+                        "id": "regalo_diario",
+                        "text": "<b>🎁 Regalo Diario</b>",
+                        "action": "claim_daily_gift",
+                        "description": "Tu recompensa diaria esperándote"
                     },
                     {
-                        "id": "vip_upgrade",
-                        "text": "💎 Mejora a VIP",
-                        "action": "show_vip_upgrade",
-                        "description": "Accede al contenido exclusivo",
+                        "id": "juegos_emotivos",
+                        "text": "<b>🎲 Juegos Emotivos</b>",
+                        "action": "show_emotional_games",
+                        "description": "Actividades lúdicas para profundizar conexión"
+                    },
+                    {
+                        "id": "desafios_lucien",
+                        "text": "<b>🎪 Desafíos de Lucien</b>",
+                        "action": "show_lucien_challenges",
+                        "description": "Pruebas de sophistication y worthiness"
+                    }
+                ]
+            },
+
+            "circulo_intimo_menu": {
+                "title": "<b>✨ Círculo Íntimo</b>",
+                "items": [
+                    {
+                        "id": "experiencias_exclusivas",
+                        "text": "<b>💫 Experiencias Exclusivas</b>",
+                        "action": "show_exclusive_experiences",
+                        "description": "Encuentros únicos reservados para VIP",
+                        "required_vip": True
+                    },
+                    {
+                        "id": "archivo_personal_diana",
+                        "text": "<b>📚 Archivo Personal de Diana</b>",
+                        "action": "show_diana_personal_archive",
+                        "description": "Memorias íntimas y reflexiones profundas",
+                        "required_vip": True
+                    },
+                    {
+                        "id": "sesiones_personalizadas",
+                        "text": "<b>🌟 Sesiones Personalizadas</b>",
+                        "action": "start_personalized_session",
+                        "description": "Encuentros adaptados específicamente a ti",
+                        "required_vip": True
+                    },
+                    {
+                        "id": "invitacion_vip",
+                        "text": "<b>💎 Invitación al Círculo</b>",
+                        "action": "show_vip_invitation",
+                        "description": "Descubre los privilegios de la membresía VIP",
                         "required_role": "free_user"
-                    },
-                    {
-                        "id": "besitos_packages",
-                        "text": "💰 Paquetes de Besitos",
-                        "action": "show_besitos_store",
-                        "description": "Compra moneda del juego"
                     }
                 ]
             }
         }
 
-    async def create_menu(self, menu_type: MenuType, user_context: Dict[str, Any]) -> Menu:
+    async def create_menu(self, menu_type: MenuType, user_context: Dict[str, Any], **kwargs) -> Menu:
         """Create menu based on type and user context, with caching."""
         cached_menu = await self.cache_manager.get_menu(menu_type.value, user_context)
         if cached_menu:
             return cached_menu
 
         if menu_type in self.builders:
-            new_menu = self.builders[menu_type].build_menu(user_context)
+            new_menu = self.builders[menu_type].build_menu(user_context, **kwargs)
         else:
             new_menu = self._create_basic_menu(menu_type, user_context)
 
         await self.cache_manager.set_menu(new_menu, user_context)
         return new_menu
 
+    async def create_organic_store_menu(self, user_context: Dict[str, Any]) -> Menu:
+        """Create organic unified store menu."""
+        main_builder = self.builders[MenuType.STORE]
+        if hasattr(main_builder, 'build_organic_store_menu'):
+            return main_builder.build_organic_store_menu(user_context)
+        else:
+            return await self.create_menu(MenuType.STORE, user_context)
+
     def create_menu_by_id(self, menu_id: str, user_context: Dict[str, Any]) -> Optional[Menu]:
-        """Create menu by specific ID."""
+        """Create menu by specific ID using organic system."""
         if menu_id in self.menu_definitions:
-            return self._create_menu_from_definition(menu_id, user_context)
+            return self._create_organic_menu_from_definition(menu_id, user_context)
+        elif menu_id == "organic_store_menu":
+            main_builder = self.builders[MenuType.STORE]
+            if hasattr(main_builder, 'build_organic_store_menu'):
+                return main_builder.build_organic_store_menu(user_context)
         return None
 
-    def _create_menu_from_definition(self, menu_id: str, user_context: Dict[str, Any]) -> Menu:
-        """Create menu from static definition."""
+    def _create_organic_menu_from_definition(self, menu_id: str, user_context: Dict[str, Any]) -> Menu:
+        """Create menu from static definition using organic principles."""
         definition = self.menu_definitions[menu_id]
+        main_builder = self.builders[MenuType.MAIN]  # Use main builder
 
         items = []
         for item_def in definition["items"]:
-            if self._user_meets_requirements(item_def, user_context):
-                item = MenuItem(
-                    id=item_def["id"],
-                    text=item_def["text"],
-                    action_type=ActionType.CALLBACK,
-                    action_data=item_def["action"],
-                    description=item_def.get("description", ""),
-                    required_role=UserRole(item_def.get("required_role", "free_user"))
-                )
-                items.append(item)
+            # Always show items, but process restrictions organically
+            item = MenuItem(
+                id=item_def["id"],
+                text=item_def["text"],
+                action_type=ActionType.CALLBACK,
+                action_data=item_def["action"],
+                description=item_def.get("description", ""),
+                required_role=UserRole(item_def.get("required_role", "free_user")),
+                required_vip=item_def.get("required_vip", False)
+            )
+
+            # Process with organic restrictions
+            if hasattr(main_builder, '_process_store_item'):
+                item = main_builder._process_store_item(item, user_context)
+
+            items.append(item)
 
         return Menu(
             menu_id=menu_id,
             title=definition["title"],
-            description="",
+            description="Cada opción refleja tu journey personal",
             menu_type=MenuType.PROFILE,
             required_role=UserRole.FREE_USER,
-            items=items
+            items=items,
+            parent_menu_id="organic_main_menu"
         )
 
-    def _user_meets_requirements(self, item_def: Dict, user_context: Dict[str, Any]) -> bool:
-        """Check if user meets requirements for menu item."""
-        required_role = item_def.get("required_role")
-        if required_role:
-            user_role = user_context.get("role", "free_user")
-            if not self._role_has_access(UserRole(user_role), UserRole(required_role)):
-                return False
+    def _user_meets_organic_requirements(self, item_def: Dict, user_context: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
+        """Check if user meets requirements using organic system (always visible, elegant restrictions)."""
+        # In organic system, everything is visible but elegantly restricted
+        restriction_reason = None
 
-        return True
+        required_vip = item_def.get("required_vip", False)
+        has_vip = user_context.get("has_vip", False)
+
+        required_worthiness = item_def.get("required_worthiness", 0.0)
+        user_worthiness = user_context.get("worthiness_score", 0.0)
+
+        if required_vip and not has_vip:
+            restriction_reason = "vip_membership"
+        elif required_worthiness > user_worthiness:
+            restriction_reason = "worthiness"
+
+        return True, restriction_reason  # Always visible, restriction noted
 
     def _role_has_access(self, user_role: UserRole, required_role: UserRole) -> bool:
         """Check if user role has access to required role."""
@@ -1015,7 +1254,7 @@ class MenuFactory:
             items=[
                 MenuItem(
                     id="back_to_main",
-                    text="🔙 Volver al Menú Principal",
+                    text="<b>🔙 Volver al Menú Principal</b>",
                     action_type=ActionType.CALLBACK,
                     action_data="main_menu",
                     description="Regresar al menú principal"

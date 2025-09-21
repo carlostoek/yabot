@@ -8,6 +8,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
+from aiogram.types import Message, CallbackQuery
 from src.config.manager import ConfigManager
 from src.core.router import Router
 from src.core.middleware import MiddlewareManager
@@ -15,6 +16,7 @@ from src.core.error_handler import ErrorHandler
 from src.handlers.commands import CommandHandler
 from src.handlers.telegram_commands import CommandHandler as TelegramCommandHandler
 from src.handlers.webhook import WebhookHandler
+from src.handlers.menu_router import MenuIntegrationRouter
 from src.utils.logger import get_logger, configure_logging
 from src.database.manager import DatabaseManager
 from src.events.bus import EventBus
@@ -51,6 +53,7 @@ class BotApplication:
         self.command_handler = CommandHandler()
         self.telegram_command_handler = TelegramCommandHandler()
         self.webhook_handler = WebhookHandler()
+        self.menu_router: Optional[MenuIntegrationRouter] = None
         
         # Initialize Telegram bot components
         self.bot: Optional[Bot] = None
@@ -100,6 +103,9 @@ class BotApplication:
             
             # Set up user service after database and event bus
             await self._setup_user_service()
+            
+            # Set up menu router
+            await self._setup_menu_router()
             
             # Initialize emotional intelligence system
             emotional_success = await self.initialize_emotional_intelligence()
@@ -235,6 +241,19 @@ class BotApplication:
         logger.info("Polling mode configured successfully")
         return True
     
+    async def _setup_menu_router(self) -> None:
+        """Initialize the menu router."""
+        logger.info("Setting up menu router")
+        if self.user_service and self.event_bus and self.database_manager:
+            self.menu_router = MenuIntegrationRouter(
+                user_service=self.user_service,
+                event_bus=self.event_bus,
+                database_manager=self.database_manager
+            )
+            logger.info("Menu router set up successfully")
+        else:
+            logger.error("Cannot set up menu router due to missing services.")
+
     def _setup_command_handlers(self) -> None:
         """Set up the command handlers with the router."""
         logger.debug("Setting up command handlers")
@@ -262,64 +281,18 @@ class BotApplication:
         logger.debug("Command handlers set up successfully")
     
     def _register_telegram_handlers(self) -> None:
-        """Register Telegram command handlers with the dispatcher."""
-        logger.debug("Registering Telegram command handlers")
-        
-        if not self.dispatcher:
-            logger.error("Dispatcher not initialized")
+        """Register Telegram handlers with the dispatcher, using the new MenuIntegrationRouter."""
+        logger.debug("Registering Telegram handlers via MenuIntegrationRouter")
+
+        if not self.dispatcher or not self.menu_router:
+            logger.error("Dispatcher or Menu Router not initialized, cannot register handlers.")
             return
-        
-        # Register command handlers
-        async def start_handler(message: Any) -> None:
-            try:
-                response = await self.telegram_command_handler.handle_start(message)
-                if response and self.bot:
-                    await self.bot.send_message(
-                        chat_id=message.chat.id,
-                        text=response.text,
-                        parse_mode=response.parse_mode,
-                        reply_markup=response.reply_markup,
-                        disable_notification=response.disable_notification
-                    )
-            except Exception as e:
-                logger.error("Error handling /start command: %s", str(e))
-        
-        # Register /menu command handler
-        async def menu_handler(message: Any) -> None:
-            try:
-                response = await self.telegram_command_handler.handle_menu(message)
-                if response and self.bot:
-                    await self.bot.send_message(
-                        chat_id=message.chat.id,
-                        text=response.text,
-                        parse_mode=response.parse_mode,
-                        reply_markup=response.reply_markup,
-                        disable_notification=response.disable_notification
-                    )
-            except Exception as e:
-                logger.error("Error handling /menu command: %s", str(e))
-        
-        # Register /help command handler
-        async def help_handler(message: Any) -> None:
-            try:
-                response = await self.telegram_command_handler.handle_help(message)
-                if response and self.bot:
-                    await self.bot.send_message(
-                        chat_id=message.chat.id,
-                        text=response.text,
-                        parse_mode=response.parse_mode,
-                        reply_markup=response.reply_markup,
-                        disable_notification=response.disable_notification
-                    )
-            except Exception as e:
-                logger.error("Error handling /help command: %s", str(e))
-        
-        # Register handlers with dispatcher
-        self.dispatcher.message.register(start_handler, Command("start"))
-        self.dispatcher.message.register(menu_handler, Command("menu"))
-        self.dispatcher.message.register(help_handler, Command("help"))
-        
-        logger.debug("Telegram command handlers registered successfully")
+
+        # Register the menu router to handle all messages and callback queries
+        self.dispatcher.message.register(self.menu_router.route_message)
+        self.dispatcher.callback_query.register(self.menu_router.route_callback)
+
+        logger.debug("Menu router registered with dispatcher to handle all messages and callbacks.")
     
     def _should_use_webhook(self) -> bool:
         """Determine if webhook mode should be used.

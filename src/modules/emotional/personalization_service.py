@@ -1,10 +1,10 @@
-"
+"""
 Personalization Content Service for the YABOT system.
 
 This module is responsible for dynamic content adaptation based on user's
 emotional archetype and journey stage, as specified in REQ-3 of the emocional
 specification.
-"
+"""
 
 from typing import Dict, Any, Optional, List
 

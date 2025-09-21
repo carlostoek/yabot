@@ -422,13 +422,21 @@ class CommandHandler(BaseHandler):
             "user_archetype": "explorer"
         }
         
-        # If we have database context, get user context
+        # If we have database context, get or create user context
         if self.user_service:
             try:
-                user_context = await self.user_service.get_user_context(user_id)
-                logger.info("Existing user context retrieved: %s", user_id)
+                # Extract telegram user data from message for user creation
+                telegram_user = {
+                    "id": user_id,
+                    "first_name": getattr(message.from_user, 'first_name', 'Usuario'),
+                    "last_name": getattr(message.from_user, 'last_name', None),
+                    "username": getattr(message.from_user, 'username', None),
+                    "is_bot": getattr(message.from_user, 'is_bot', False)
+                }
+                user_context = await self.user_service.get_or_create_user_context(user_id, telegram_user)
+                logger.info("User context retrieved or created: %s", user_id)
             except Exception as e:
-                logger.warning("Could not retrieve user context: %s", str(e))
+                logger.warning("Could not get or create user context: %s", str(e))
         
         # Publish user interaction event
         await self._publish_user_interaction_event(user_id, "menu", message)
@@ -540,13 +548,21 @@ class CommandHandler(BaseHandler):
             "user_archetype": "explorer"
         }
         
-        # If we have database context, get user context
+        # If we have database context, get or create user context
         if self.user_service:
             try:
-                user_context = await self.user_service.get_user_context(user_id)
-                logger.info("Existing user context retrieved: %s", user_id)
+                # Extract telegram user data from message for user creation
+                telegram_user = {
+                    "id": user_id,
+                    "first_name": getattr(message.from_user, 'first_name', 'Usuario'),
+                    "last_name": getattr(message.from_user, 'last_name', None),
+                    "username": getattr(message.from_user, 'username', None),
+                    "is_bot": getattr(message.from_user, 'is_bot', False)
+                }
+                user_context = await self.user_service.get_or_create_user_context(user_id, telegram_user)
+                logger.info("User context retrieved or created: %s", user_id)
             except Exception as e:
-                logger.warning("Could not retrieve user context: %s", str(e))
+                logger.warning("Could not get or create user context: %s", str(e))
         
         # Publish user interaction event
         await self._publish_user_interaction_event(user_id, "help", message)
@@ -655,13 +671,21 @@ class CommandHandler(BaseHandler):
             "user_archetype": "explorer"
         }
         
-        # If we have database context, get user context
+        # If we have database context, get or create user context
         if self.user_service:
             try:
-                user_context = await self.user_service.get_user_context(user_id)
-                logger.info("Existing user context retrieved: %s", user_id)
+                # Extract telegram user data from message for user creation
+                telegram_user = {
+                    "id": user_id,
+                    "first_name": getattr(message.from_user, 'first_name', 'Usuario'),
+                    "last_name": getattr(message.from_user, 'last_name', None),
+                    "username": getattr(message.from_user, 'username', None),
+                    "is_bot": getattr(message.from_user, 'is_bot', False)
+                }
+                user_context = await self.user_service.get_or_create_user_context(user_id, telegram_user)
+                logger.info("User context retrieved or created: %s", user_id)
             except Exception as e:
-                logger.warning("Could not retrieve user context: %s", str(e))
+                logger.warning("Could not get or create user context: %s", str(e))
         
         # Publish user interaction event
         await self._publish_user_interaction_event(user_id, "unknown", message)
