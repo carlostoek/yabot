@@ -3,6 +3,7 @@ Unified Menu Factory System for YABOT
 Manages role-based menu generation with consistency across the entire system.
 """
 
+import sys
 from typing import Dict, List, Any, Optional, Union, Tuple
 from enum import Enum
 from dataclasses import dataclass, field
@@ -262,7 +263,7 @@ class MenuBuilder(ABC):
     """Abstract base class for menu builders."""
 
     @abstractmethod
-    def build_menu(self, user_context: Dict[str, Any], **kwargs) -> Menu:
+    async def build_menu(self, user_context: Dict[str, Any], **kwargs) -> Menu:
         """Build menu for specific user context."""
         pass
 
@@ -308,7 +309,7 @@ class MainMenuBuilder(MenuBuilder):
         self.lucien_profile = LucienVoiceProfile()
         self.user_service = user_service
 
-    def build_menu(self, user_context: Dict[str, Any], **kwargs) -> Menu:
+    async def build_menu(self, user_context: Dict[str, Any], **kwargs) -> Menu:
         """Build organic main menu that shows all options with elegant restrictions."""
         try:
             user_context = self._validate_user_context(user_context)
@@ -348,7 +349,7 @@ class MainMenuBuilder(MenuBuilder):
             ]
 
             # Add El Diván with organic worthiness explanation if not accessible
-            divan_item = self._create_divan_menu_item(user_context)
+            divan_item = await self._create_divan_menu_item(user_context)
             items.append(divan_item)
 
             # Add admin panel for admins
@@ -461,7 +462,7 @@ class MainMenuBuilder(MenuBuilder):
             self._log_menu_creation("organic_store_menu", user_context.get('user_id', 'unknown'), False, str(e))
             raise MenuGenerationError(f"Failed to build organic store menu: {str(e)}")
 
-    def _create_divan_menu_item(self, user_context: Dict[str, Any]) -> MenuItem:
+    async def _create_divan_menu_item(self, user_context: Dict[str, Any]) -> MenuItem:
         """Create El Diván menu item with organic access explanation."""
         has_vip = user_context.get('has_vip', False)
         worthiness_score = user_context.get('worthiness_score', 0.0)
@@ -476,7 +477,7 @@ class MainMenuBuilder(MenuBuilder):
             )
         else:
             # Visible but with Lucien's elegant explanation
-            worthiness_explanation = self._generate_worthiness_explanation(user_context)
+            worthiness_explanation = await self._generate_worthiness_explanation(user_context)
             return MenuItem(
                 id="el_divan_evaluacion", text="<b>🛋️ El Diván</b> ✨", action_type=ActionType.CALLBACK,
                 action_data="explain_divan_worthiness",
@@ -533,8 +534,28 @@ class MainMenuBuilder(MenuBuilder):
 
         return item
 
-    def _generate_worthiness_explanation(self, user_context: Dict[str, Any]) -> str:
-        """Generate Lucien's explanation for worthiness requirements."""
+    async def _generate_worthiness_explanation(self, user_context: Dict[str, Any]) -> str:
+        """Generate Lucien's explanation for worthiness requirements.
+        
+        Delegates to UserService when available for more sophisticated explanations,
+        otherwise uses local implementation.
+        """
+        # If we have a UserService instance, delegate to it for better explanations
+        if self.user_service:
+            try:
+                user_id = user_context.get('user_id')
+                if user_id:
+                    # Generate explanation via UserService
+                    explanation_dict = await self.user_service.generate_worthiness_explanation(user_id)
+                    if explanation_dict and 'description_text' in explanation_dict:
+                        return explanation_dict['description_text']
+                    elif explanation_dict and 'explanation' in explanation_dict:
+                        return explanation_dict['explanation']
+            except Exception as e:
+                logger.warning(f"Failed to delegate worthiness explanation to UserService: {e}")
+                # Fall back to local implementation
+        
+        # Local implementation as fallback
         worthiness_score = user_context.get('worthiness_score', 0.0)
         required_worthiness = 0.6
         relationship_level = user_context.get('relationship_level', 'formal_examiner')
@@ -686,7 +707,7 @@ class MainMenuBuilder(MenuBuilder):
 class NarrativeMenuBuilder(MenuBuilder):
     """Builder for narrative/Diana menu system."""
 
-    def build_menu(self, user_context: Dict[str, Any], **kwargs) -> Menu:
+    async def build_menu(self, user_context: Dict[str, Any], **kwargs) -> Menu:
         """Build narrative menu based on user progress."""
         try:
             user_context = self._validate_user_context(user_context)
@@ -829,7 +850,7 @@ class NarrativeMenuBuilder(MenuBuilder):
 class AdminMenuBuilder(MenuBuilder):
     """Builder for administrative menu system."""
 
-    def build_menu(self, user_context: Dict[str, Any], **kwargs) -> Menu:
+    async def build_menu(self, user_context: Dict[str, Any], **kwargs) -> Menu:
         """Build admin menu based on admin role."""
         try:
             user_context = self._validate_user_context(user_context)
@@ -934,7 +955,7 @@ class AdminMenuBuilder(MenuBuilder):
 class VIPMenuBuilder(MenuBuilder):
     """Builder for VIP exclusive menu system."""
 
-    def build_menu(self, user_context: Dict[str, Any]) -> Menu:
+    async def build_menu(self, user_context: Dict[str, Any]) -> Menu:
         """Build VIP menu with exclusive content."""
         narrative_level = user_context.get('narrative_level', 0)
 
@@ -1070,17 +1091,17 @@ class MenuFactory:
         """
         self.user_service = user_service
         self.builders = {
-            MenuType.MAIN: MainMenuBuilder(),  # Use organic main menu builder
+            MenuType.MAIN: MainMenuBuilder(user_service),  # Use organic main menu builder
             MenuType.NARRATIVE: NarrativeMenuBuilder(),
             MenuType.ADMIN: AdminMenuBuilder(),
             MenuType.VIP: VIPMenuBuilder(),
-            MenuType.STORE: MainMenuBuilder(),  # Use organic main menu builder for store too
-            MenuType.GAMIFICATION: MainMenuBuilder(),
-            MenuType.PROFILE: MainMenuBuilder(),
-            MenuType.EMOTIONAL: MainMenuBuilder(),
-            MenuType.DIANA: MainMenuBuilder(),
-            MenuType.SETTINGS: MainMenuBuilder(),
-            MenuType.HELP: MainMenuBuilder()
+            MenuType.STORE: MainMenuBuilder(user_service),  # Use organic main menu builder for store too
+            MenuType.GAMIFICATION: MainMenuBuilder(user_service),
+            MenuType.PROFILE: MainMenuBuilder(user_service),
+            MenuType.EMOTIONAL: MainMenuBuilder(user_service),
+            MenuType.DIANA: MainMenuBuilder(user_service),
+            MenuType.SETTINGS: MainMenuBuilder(user_service),
+            MenuType.HELP: MainMenuBuilder(user_service)
         }
 
         self.menu_definitions = self._initialize_menu_definitions()
@@ -1123,7 +1144,7 @@ class MenuFactory:
 
         # Build the menu
         if menu_type in self.builders:
-            new_menu = self.builders[menu_type].build_menu(user_context, **kwargs)
+            new_menu = await self.builders[menu_type].build_menu(user_context, **kwargs)
         else:
             # Try to get from centralized definitions
             menu_config = menu_system_config.get_menu_definition(menu_type.value)

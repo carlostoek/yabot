@@ -111,7 +111,7 @@ class CommandHandler(BaseHandler):
             "• /start - Show this welcome message\n"
             "• /menu - Show the main menu\n"
             "• /help - Show help information\n\n"
-            "Feel free to explore what I can do!"
+            "aquí mando yo"
         )
         
         return await self._create_response(welcome_text)

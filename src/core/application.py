@@ -3,6 +3,7 @@ Bot application for the Telegram bot framework.
 """
 
 import asyncio
+import sys
 from datetime import datetime
 from typing import Any, Optional, Dict, Callable
 from aiogram import Bot, Dispatcher
@@ -333,6 +334,12 @@ class BotApplication:
             menu_coordinator=self.menu_system_coordinator
         )
         logger.info("Menu router set up successfully")
+
+        # Connect menu system coordinator to menu handlers for enhanced integration
+        if self.menu_system_coordinator and hasattr(self.menu_router, 'menu_handler_system'):
+            logger.info("Connecting MenuSystemCoordinator to menu handlers")
+            # The menu router should have access to menu handlers that we can enhance
+            pass
 
         # Now register the Telegram handlers with the dispatcher
         self._register_telegram_handlers()

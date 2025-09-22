@@ -1,6 +1,7 @@
 import asyncio
 from typing import Dict, Any, Optional
 from datetime import datetime
+import sys
 
 from aiogram import Bot
 from aiogram.types import Message, CallbackQuery
@@ -8,6 +9,7 @@ from aiogram.types import Message, CallbackQuery
 from src.handlers.base import BaseHandler
 from src.handlers.menu_handler import MenuHandlerSystem
 from src.handlers.callback_processor import CallbackProcessor
+from src.handlers.action_dispatcher import ActionDispatcher
 from src.ui.menu_factory import MenuFactory
 from src.ui.message_manager import MessageManager
 from src.ui.telegram_menu_renderer import TelegramMenuRenderer
@@ -44,7 +46,7 @@ class MenuSystemCoordinator:
         self.user_service = user_service
 
         # Initialize core components
-        self.menu_factory = MenuFactory()
+        self.menu_factory = MenuFactory(user_service)
 
         # Initialize message manager with error handling
         if hasattr(user_service, 'cache_manager') and user_service.cache_manager:
@@ -114,6 +116,7 @@ class MenuSystemCoordinator:
         try:
             user_context = await self.user_service.get_enhanced_user_menu_context(str(message.from_user.id))
 
+            print(f"[DEBUGGER:handle_menu_command:2.1] About to determine menu type", file=sys.stderr)
             # Determine menu type based on command or default to main
             command = message.text.strip() if message.text else "/menu"
             menu_id = menu_system_config.get_routing_rule(command.lstrip('/'))
@@ -124,7 +127,7 @@ class MenuSystemCoordinator:
                 return {"success": False, "error": "Failed to generate menu"}
 
             # Render and send menu
-            response = await self.menu_renderer.render_menu_response(menu)
+            response = self.menu_renderer.render_menu_response(menu)
 
             # Track message for cleanup
             sent_message = await self.bot.send_message(
