@@ -15,6 +15,7 @@ from src.database.manager import DatabaseManager
 from src.events.bus import EventBus
 from src.events.models import create_event
 from src.utils.logger import get_logger
+from src.utils.cache_manager import CacheManager
 from src.ui.lucien_voice_generator import (
     LucienVoiceProfile, InteractionHistory, WorthinessProgression,
     BehavioralAssessment, RelationshipLevel, FormalityLevel,
@@ -42,15 +43,17 @@ class UserNotFoundError(UserServiceError):
 class UserService:
     """Service for unified user operations across MongoDB and SQLite databases."""
     
-    def __init__(self, database_manager: DatabaseManager, event_bus: EventBus):
+    def __init__(self, database_manager: DatabaseManager, event_bus: EventBus, cache_manager: Optional[CacheManager] = None):
         """Initialize the user service.
-        
+
         Args:
             database_manager (DatabaseManager): Database manager instance
             event_bus (EventBus): Event bus instance
+            cache_manager (CacheManager, optional): Cache manager instance
         """
         self.database_manager = database_manager
         self.event_bus = event_bus
+        self.cache_manager = cache_manager or CacheManager()
         logger.info("UserService initialized")
     
     async def create_user(self, telegram_user: Dict[str, Any]) -> Dict[str, Any]:

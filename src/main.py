@@ -41,13 +41,32 @@ bot_app = None
 logger = None
 module_registry = None
 backup_automation = None
+# Track background tasks for proper cancellation
+background_tasks = set()
 
 async def shutdown_bot(signum=None, frame=None):
     """Gracefully shutdown the bot application and all modules."""
-    global bot_app, logger, module_registry, backup_automation
+    global bot_app, logger, module_registry, backup_automation, background_tasks
     
     if signum and logger:
         logger.info("Received signal %s, shutting down...", signum)
+    
+    # Cancel all background tasks
+    if background_tasks:
+        logger.info("Cancelling %d background tasks...", len(background_tasks))
+        for task in background_tasks:
+            if not task.done():
+                task.cancel()
+        
+        # Wait for tasks to complete cancellation
+        if background_tasks:
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*background_tasks, return_exceptions=True),
+                    timeout=5.0
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Some background tasks did not cancel within timeout")
     
     # Update module registry states
     if module_registry:
@@ -64,7 +83,9 @@ async def shutdown_bot(signum=None, frame=None):
     if bot_app and bot_app.is_running:
         if logger:
             logger.info("Stopping bot application...")
-        await bot_app.stop()
+        success = await bot_app.stop()
+        if not success:
+            logger.warning("Bot application stop returned False")
     
     # Save final module registry state
     if module_registry:
@@ -75,7 +96,9 @@ async def shutdown_bot(signum=None, frame=None):
     
     if logger:
         logger.info("Bot application stopped")
-    sys.exit(0)
+    # Instead of sys.exit(0), we'll use a more graceful approach
+    # The main loop will detect that the bot is no longer running and exit naturally
+    return True
 
 
 async def initialize_modules(module_registry):
@@ -149,8 +172,21 @@ async def main():
         logger.info("Starting YABOT application with atomic modules...")
     
     # Set up signal handlers for graceful shutdown
-    signal.signal(signal.SIGTERM, lambda s, f: asyncio.create_task(shutdown_bot(s, f)))
-    signal.signal(signal.SIGINT, lambda s, f: asyncio.create_task(shutdown_bot(s, f)))
+    loop = asyncio.get_running_loop()
+    
+    # Create an event that will be set when shutdown is requested
+    shutdown_event = asyncio.Event()
+    
+    def signal_handler(signum, frame):
+        """Signal handler that schedules shutdown in the event loop."""
+        if logger:
+            logger.info("Received signal %s, scheduling shutdown...", signum)
+        # Schedule the shutdown coroutine in the event loop
+        loop.call_soon_threadsafe(shutdown_event.set)
+    
+    # Register signal handlers
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
     
     # Initialize the module registry
     # In a real implementation, we would pass the actual event bus
@@ -181,13 +217,19 @@ async def main():
     
     # Keep the application running
     try:
-        while bot_app.is_running:
+        while bot_app.is_running and not shutdown_event.is_set():
             # Send heartbeats for modules
             if module_registry:
                 for module_info in module_registry.get_all_modules():
                     module_registry.heartbeat(module_info.name)
             
-            await asyncio.sleep(1)
+            # Wait for either 1 second or shutdown event
+            try:
+                await asyncio.wait_for(shutdown_event.wait(), timeout=1.0)
+            except asyncio.TimeoutError:
+                # Normal case - continue the loop
+                pass
+                
     except asyncio.CancelledError:
         if logger:
             logger.info("Bot application task was cancelled")
@@ -195,6 +237,7 @@ async def main():
         if logger:
             logger.error("Unexpected error in bot application: %s", e)
     finally:
+        # Perform shutdown when the loop exits
         await shutdown_bot()
 
 

@@ -203,3 +203,63 @@
 
 # 2025-09-19 15:17:11.387176
 +Genial ya estaba arrancando ya puedo interactuar con el bot pero esta mezcla de librerías entre aiogram y Telegram bot no afectará en el desarrollo futuro?
+
+# 2025-09-22 01:07:54.745810
++Y
+
+# 2025-09-22 01:07:59.964944
++The issue is the         │    │   menu system                │    │     coordinator              │    │   initialization             │    │     failure. The fix I       │    │   applied                    │
++│     for handlercoordinator              │
++│   initialization             │
++│     failure. The fix I       │
++│   applied                    │
++│     for handler              │
++│   registration               │    │     timing is correct,       │    │   but the menu system              │
++│   coordinator                │
++│     itself is failing to     │
++│     initialize.
+
+# 2025-09-22 01:15:48.869630
++Tengo esto cuando envío un comando 
++
++INFO:aiogram.event:Update id=277600326 is not handled. Duration 0 ms by bot id=7360762013
++INFO:aiogram.event:Update id=277600327 is not handled. Duration 0 ms by bot id=7360762013
+
+# 2025-09-22 01:18:14.217610
++/run ps aux | grep python
+
+# 2025-09-22 01:18:14.217723
++/run ps aux | grep python
+
+# 2025-09-22 01:18:22.166368
++.
+
+# 2025-09-22 01:19:58.261703
++/run pkill -f "python -m src.main"
+
+# 2025-09-22 01:19:58.261794
++/run pkill -f "python -m src.main"
+
+# 2025-09-22 01:20:07.713600
++/run python -m src.main
+
+# 2025-09-22 01:20:07.713740
++/run python -m src.main
+
+# 2025-09-22 01:29:18.934633
++/run pkill -f "python -m src.main"
+
+# 2025-09-22 01:29:18.934758
++/run pkill -f "python -m src.main"
+
+# 2025-09-22 01:29:19.278275
++/run sleep 2
+
+# 2025-09-22 01:29:19.278369
++/run sleep 2
+
+# 2025-09-22 01:29:21.601448
++/run python -m src.main
+
+# 2025-09-22 01:29:21.601543
++/run python -m src.main
