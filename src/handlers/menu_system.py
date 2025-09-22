@@ -89,7 +89,8 @@ class MenuSystemCoordinator:
         """
         try:
             # Initialize message manager
-            if not await self.message_manager.initialize():
+            init_result = await self.message_manager.initialize()
+            if not init_result:
                 logger.error("Failed to initialize message manager")
                 return False
 
@@ -97,7 +98,7 @@ class MenuSystemCoordinator:
             await self.performance_monitor.reset_metrics()
 
             # Start background services
-            await self.message_manager.start_periodic_cleanup()
+            self.message_manager.start_periodic_cleanup()
 
             logger.info("Menu system coordinator initialized successfully")
             return True

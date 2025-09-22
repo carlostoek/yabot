@@ -435,13 +435,24 @@ class EventBus:
         """Start the periodic flush task."""
         if self._flush_task is None or self._flush_task.done():
             self._flush_task = asyncio.create_task(self._flush_loop())
+            self._register_background_task(self._flush_task, "EventBus flush task")
             logger.debug("Started flush task")
 
     def _start_retry_task(self) -> None:
         """Start the periodic retry task."""
         if self._retry_task is None or self._retry_task.done():
             self._retry_task = asyncio.create_task(self._retry_loop())
+            self._register_background_task(self._retry_task, "EventBus retry task")
             logger.debug("Started retry task")
+
+    def _register_background_task(self, task: asyncio.Task, task_name: str) -> None:
+        """Register background task with the main application for proper shutdown."""
+        try:
+            # Import here to avoid circular imports
+            from src.main import register_background_task
+            register_background_task(task, task_name)
+        except ImportError:
+            logger.warning(f"Could not register background task {task_name} - main module not available")
     
     async def _flush_loop(self) -> None:
         """Periodically flush the local queue."""
@@ -876,23 +887,29 @@ class EventBus:
     async def close(self) -> None:
         """Close the event bus connections and clean up."""
         logger.info("Closing event bus connections")
-        
-        # Cancel flush task
+
+        # Cancel and unregister flush task
         if self._flush_task and not self._flush_task.done():
             self._flush_task.cancel()
+            self._unregister_background_task(self._flush_task)
             try:
-                await self._flush_task
-            except asyncio.CancelledError:
-                pass
+                await asyncio.wait_for(self._flush_task, timeout=2.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                logger.debug("Flush task cancelled/timed out during shutdown")
+            except Exception as e:
+                logger.warning(f"Error during flush task cancellation: {e}")
 
-        # Cancel retry task
+        # Cancel and unregister retry task
         if self._retry_task and not self._retry_task.done():
             self._retry_task.cancel()
+            self._unregister_background_task(self._retry_task)
             try:
-                await self._retry_task
-            except asyncio.CancelledError:
-                pass
-        
+                await asyncio.wait_for(self._retry_task, timeout=2.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                logger.debug("Retry task cancelled/timed out during shutdown")
+            except Exception as e:
+                logger.warning(f"Error during retry task cancellation: {e}")
+
         # Close Redis connection
         if self._redis_client:
             try:
@@ -900,13 +917,22 @@ class EventBus:
                 logger.info("Redis connection closed")
             except Exception as e:
                 logger.error("Error closing Redis connection: %s", str(e))
-        
+
         # Persist any remaining events
         self._persist_events()
         self._persist_retry_queue()
-        
+
         self._is_connected = False
         logger.info("Event bus connections closed")
+
+    def _unregister_background_task(self, task: asyncio.Task) -> None:
+        """Unregister background task from the main application."""
+        try:
+            # Import here to avoid circular imports
+            from src.main import unregister_background_task
+            unregister_background_task(task)
+        except ImportError:
+            pass  # Main module not available
     
     @property
     def is_connected(self) -> bool:

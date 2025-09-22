@@ -406,6 +406,27 @@ class MemoryFragmentCreatedEvent(BaseEvent):
     emotional_significance: float = Field(..., description="Significance score of the memory")
 
 
+class ModuleRegisteredEvent(BaseEvent):
+    """Event published when a module is registered."""
+    module_name: str = Field(..., description="Name of the registered module")
+    module_type: str = Field(..., description="Type of the module")
+    version: str = Field(..., description="Version of the module")
+
+
+class ModuleStateChangedEvent(BaseEvent):
+    """Event published when a module state changes."""
+    module_name: str = Field(..., description="Name of the module")
+    old_state: str = Field(..., description="Previous state of the module")
+    new_state: str = Field(..., description="New state of the module")
+
+
+class ModuleHealthChangedEvent(BaseEvent):
+    """Event published when a module health status changes."""
+    module_name: str = Field(..., description="Name of the module")
+    old_health: str = Field(..., description="Previous health status of the module")
+    new_health: str = Field(..., description="New health status of the module")
+
+
 # Event type constants for easy reference
 EVENT_MODELS = {
     "user_interaction": UserInteractionEvent,
@@ -449,6 +470,10 @@ EVENT_MODELS = {
     "diana_level_progression": DianaLevelProgressionEvent,
     "emotional_milestone_reached": EmotionalMilestoneReachedEvent,
     "memory_fragment_created": MemoryFragmentCreatedEvent,
+    # Module registry events
+    "module_registered": ModuleRegisteredEvent,
+    "module_state_changed": ModuleStateChangedEvent,
+    "module_health_changed": ModuleHealthChangedEvent,
 }
 
 

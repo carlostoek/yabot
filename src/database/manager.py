@@ -387,12 +387,32 @@ class DatabaseManager:
         # Start MongoDB recovery monitor task
         if not hasattr(self, '_mongo_recovery_task') or self._mongo_recovery_task.done():
             self._mongo_recovery_task = asyncio.create_task(self._monitor_mongo_recovery())
-        
+            self._register_background_task(self._mongo_recovery_task, "MongoDB recovery monitor")
+
         # Start SQLite recovery monitor task
         if not hasattr(self, '_sqlite_recovery_task') or self._sqlite_recovery_task.done():
             self._sqlite_recovery_task = asyncio.create_task(self._monitor_sqlite_recovery())
-        
+            self._register_background_task(self._sqlite_recovery_task, "SQLite recovery monitor")
+
         logger.info("Offline database recovery monitor started")
+
+    def _register_background_task(self, task: asyncio.Task, task_name: str) -> None:
+        """Register background task with the main application for proper shutdown."""
+        try:
+            # Import here to avoid circular imports
+            from src.main import register_background_task
+            register_background_task(task, task_name)
+        except ImportError:
+            logger.warning(f"Could not register background task {task_name} - main module not available")
+
+    def _unregister_background_task(self, task: asyncio.Task) -> None:
+        """Unregister background task from the main application."""
+        try:
+            # Import here to avoid circular imports
+            from src.main import unregister_background_task
+            unregister_background_task(task)
+        except ImportError:
+            pass  # Main module not available
 
     async def _monitor_mongo_recovery(self) -> None:
         """Monitor MongoDB connection recovery and attempt reconnection."""
@@ -530,21 +550,27 @@ class DatabaseManager:
     async def stop_offline_recovery_monitor(self) -> None:
         """Stop the offline database recovery monitoring mechanism."""
         logger.info("Stopping offline database recovery monitor")
-        
-        # Cancel MongoDB recovery task
+
+        # Cancel and unregister MongoDB recovery task
         if hasattr(self, '_mongo_recovery_task') and not self._mongo_recovery_task.done():
             self._mongo_recovery_task.cancel()
+            self._unregister_background_task(self._mongo_recovery_task)
             try:
-                await self._mongo_recovery_task
-            except asyncio.CancelledError:
-                pass
-        
-        # Cancel SQLite recovery task
+                await asyncio.wait_for(self._mongo_recovery_task, timeout=2.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                logger.debug("MongoDB recovery task cancelled/timed out during shutdown")
+            except Exception as e:
+                logger.warning(f"Error during MongoDB recovery task cancellation: {e}")
+
+        # Cancel and unregister SQLite recovery task
         if hasattr(self, '_sqlite_recovery_task') and not self._sqlite_recovery_task.done():
             self._sqlite_recovery_task.cancel()
+            self._unregister_background_task(self._sqlite_recovery_task)
             try:
-                await self._sqlite_recovery_task
-            except asyncio.CancelledError:
-                pass
-        
+                await asyncio.wait_for(self._sqlite_recovery_task, timeout=2.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                logger.debug("SQLite recovery task cancelled/timed out during shutdown")
+            except Exception as e:
+                logger.warning(f"Error during SQLite recovery task cancellation: {e}")
+
         logger.info("Offline database recovery monitor stopped")

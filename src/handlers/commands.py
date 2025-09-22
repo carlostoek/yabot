@@ -72,7 +72,7 @@ class CommandHandler(BaseHandler):
         Returns:
             CommandResponse: The welcome message response
         """
-        logger.info("Processing /start command")
+        logger.info("Processing /start command - handler called")
         
         # Extract user information from message
         user = getattr(message, 'from_user', None)
@@ -125,7 +125,7 @@ class CommandHandler(BaseHandler):
         Returns:
             CommandResponse: The menu response
         """
-        logger.info("Processing /menu command")
+        logger.info("Processing /menu command - handler called")
         
         # Extract user information from message
         user = getattr(message, 'from_user', None)
@@ -156,7 +156,7 @@ class CommandHandler(BaseHandler):
         Returns:
             CommandResponse: The help response
         """
-        logger.info("Processing /help command")
+        logger.info("Processing /help command - handler called")
         
         # Extract user information from message
         user = getattr(message, 'from_user', None)
@@ -185,7 +185,7 @@ class CommandHandler(BaseHandler):
         Returns:
             CommandResponse: The response for unknown commands
         """
-        logger.info("Processing unknown command")
+        logger.info("Processing unknown command - handler called")
         
         # Extract user information from message
         user = getattr(message, 'from_user', None)

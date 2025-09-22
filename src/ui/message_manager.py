@@ -13,7 +13,7 @@ import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from enum import Enum
 
 from aiogram import Bot
@@ -177,10 +177,110 @@ class MessageManager:
         self.bot = bot
         self.cache = cache
         self.scheduler = AsyncIOScheduler()
+        self._initialized = False
+        self._metrics = {
+            "total_messages_tracked": 0,
+            "total_messages_deleted": 0,
+            "successful_deletions": 0,
+            "failed_deletions": 0,
+            "cache_errors": 0,
+            "api_errors": 0
+        }
         logger.info("MessageManager initialized.")
+
+    async def initialize(self) -> bool:
+        """
+        Initialize the message manager components.
+        
+        Returns:
+            bool: True if initialization was successful, False otherwise.
+        """
+        try:
+            # Connect to cache
+            cache_connected = await self.cache.connect()
+            if not cache_connected:
+                logger.warning("Failed to connect to cache during initialization")
+                # Continue initialization but mark cache as disconnected
+            
+            # Start scheduler
+            if not self.scheduler.running:
+                self.scheduler.start()
+                logger.info("Scheduler started successfully")
+            
+            self._initialized = True
+            logger.info("MessageManager initialized successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error during MessageManager initialization: {e}")
+            self._initialized = False
+            return False
+
+    def is_initialized(self) -> bool:
+        """Check if the message manager is initialized."""
+        return self._initialized
+
+    async def initialize(self) -> bool:
+        """
+        Initialize the message manager and return a boolean indicating success.
+        
+        Returns:
+            bool: True if initialization was successful, False otherwise.
+        """
+        try:
+            # Connect to cache
+            if not await self.cache.connect():
+                logger.error("Failed to connect to cache during initialization")
+                return False
+            
+            # Start the scheduler
+            if not self.scheduler.running:
+                self.scheduler.start()
+            
+            self._initialized = True
+            logger.info("MessageManager successfully initialized")
+            return True
+        except Exception as e:
+            logger.error(f"Error during MessageManager initialization: {e}", exc_info=True)
+            self._initialized = False
+            return False
+
+    def is_initialized(self) -> bool:
+        """
+        Check if the message manager is initialized.
+        
+        Returns:
+            bool: True if initialized, False otherwise.
+        """
+        return self._initialized
+
+    def get_performance_statistics(self) -> Dict[str, Any]:
+        """
+        Return performance statistics for the message manager.
+        
+        Returns:
+            Dict[str, Any]: Dictionary containing performance metrics.
+        """
+        return {
+            "total_messages_processed": self.metrics.total_messages_processed,
+            "successful_deletions": self.metrics.successful_deletions,
+            "failed_deletions": self.metrics.failed_deletions,
+            "batch_operations": self.metrics.batch_operations,
+            "average_batch_size": round(self.metrics.average_batch_size, 2),
+            "rate_limit_hits": self.metrics.rate_limit_hits,
+            "total_processing_time": round(self.metrics.total_processing_time, 2),
+            "success_rate": round(self.metrics.get_success_rate(), 2),
+            "last_cleanup": self.metrics.last_cleanup.isoformat() if self.metrics.last_cleanup else None,
+            "is_initialized": self._initialized,
+            "scheduler_running": self.scheduler.running
+        }
 
     def start_periodic_cleanup(self, interval_seconds: int = 60):
         """Starts the periodic cleanup of expired messages."""
+        if not self._initialized:
+            logger.warning("MessageManager not initialized. Skipping periodic cleanup setup.")
+            return
+            
         if not self.scheduler.running:
             self.scheduler.add_job(
                 self._cleanup_expired_messages, 
@@ -194,8 +294,13 @@ class MessageManager:
 
     async def _cleanup_expired_messages(self):
         """Job to clean up all expired messages across all chats."""
+        if not self._initialized:
+            logger.warning("MessageManager not initialized. Skipping periodic cleanup.")
+            return
+            
         if not await self.cache.connect():
             logger.warning("Cache not connected. Skipping periodic cleanup.")
+            self._metrics["cache_errors"] += 1
             return
 
         logger.debug("Running periodic message cleanup job.")
@@ -225,10 +330,12 @@ class MessageManager:
 
             except (json.JSONDecodeError, TypeError, KeyError) as e:
                 logger.error(f"Failed to decode or process message tracking record from key {key}: {e}")
+                self._metrics["cache_errors"] += 1
                 # Delete the malformed key to prevent future errors
                 await self.cache.delete_key(key)
             except Exception as e:
                 logger.error(f"Unexpected error processing key {key} for periodic cleanup: {e}", exc_info=True)
+                self._metrics["cache_errors"] += 1
 
         if deletion_tasks:
             logger.info(f"Periodically cleaning up {len(deletion_tasks)} expired messages.")
@@ -239,6 +346,42 @@ class MessageManager:
         if self.scheduler.running:
             self.scheduler.shutdown()
             logger.info("MessageManager scheduler shut down.")
+        self._initialized = False
+        logger.info("MessageManager shut down.")
+
+    async def get_performance_statistics(self) -> Dict[str, Any]:
+        """
+        Get performance statistics for the message manager.
+        
+        Returns:
+            Dict containing performance metrics.
+        """
+        if not self._initialized:
+            return {
+                "status": "not_initialized",
+                "error": "MessageManager not initialized",
+                "metrics": {}
+            }
+            
+        # Calculate success rate
+        total_deletions = self._metrics["successful_deletions"] + self._metrics["failed_deletions"]
+        success_rate = (self._metrics["successful_deletions"] / total_deletions * 100) if total_deletions > 0 else 0
+        
+        return {
+            "status": "operational",
+            "metrics": {
+                "total_messages_tracked": self._metrics["total_messages_tracked"],
+                "total_messages_deleted": self._metrics["total_messages_deleted"],
+                "successful_deletions": self._metrics["successful_deletions"],
+                "failed_deletions": self._metrics["failed_deletions"],
+                "cache_errors": self._metrics["cache_errors"],
+                "api_errors": self._metrics["api_errors"],
+                "deletion_success_rate": round(success_rate, 2),
+                "scheduler_status": "running" if self.scheduler.running else "stopped"
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        self._initialized = False
 
     def _get_tracking_key(self, chat_id: int, message_id: int) -> str:
         """Generate a unique Redis key for tracking a message."""
@@ -268,8 +411,13 @@ class MessageManager:
             message_type: The type of the message (e.g., 'notification', 'main_menu').
             is_main_menu: Flag indicating if this is the main menu message.
         """
+        if not self._initialized:
+            logger.warning("MessageManager not initialized. Skipping message tracking.")
+            return
+            
         if not await self.cache.connect():
             logger.warning("Cache not connected. Skipping message tracking.")
+            self._metrics["cache_errors"] += 1
             return
 
         ttl = MESSAGE_TTL_CONFIG.get(message_type, MESSAGE_TTL_CONFIG['default'])
@@ -288,6 +436,7 @@ class MessageManager:
         redis_ttl = None if ttl == -1 else ttl + 10 
         
         await self.cache.set_value(key, record.__dict__, ttl=redis_ttl)
+        self._metrics["total_messages_tracked"] += 1
         logger.debug(f"Tracking message {message_id} in chat {chat_id} with TTL {ttl}s.")
 
         if is_main_menu:
@@ -325,20 +474,33 @@ class MessageManager:
             chat_id: The chat ID.
             message_id: The message ID to delete.
         """
+        if not self._initialized:
+            logger.warning("MessageManager not initialized. Skipping message deletion.")
+            return
+            
         try:
             await self.bot.delete_message(chat_id, message_id)
+            self._metrics["total_messages_deleted"] += 1
+            self._metrics["successful_deletions"] += 1
             logger.debug(f"Successfully deleted message {message_id} from chat {chat_id}.")
         except TelegramBadRequest as e:
             if "message to delete not found" in e.message or "message can't be deleted" in e.message:
                 logger.warning(f"Could not delete message {message_id} in chat {chat_id}: {e.message}")
+                self._metrics["api_errors"] += 1
             else:
                 logger.error(f"Error deleting message {message_id} in chat {chat_id}: {e}", exc_info=True)
+                self._metrics["api_errors"] += 1
+                self._metrics["failed_deletions"] += 1
         except Exception as e:
             logger.error(f"Unexpected error deleting message {message_id} in chat {chat_id}: {e}", exc_info=True)
+            self._metrics["api_errors"] += 1
+            self._metrics["failed_deletions"] += 1
         finally:
             # Always try to remove the tracking key from cache
             key = self._get_tracking_key(chat_id, message_id)
-            await self.cache.delete_key(key)
+            cache_result = await self.cache.delete_key(key)
+            if not cache_result:
+                self._metrics["cache_errors"] += 1
 
     async def delete_old_messages(self, chat_id: int, keep_main_menu: bool = True) -> None:
         """
@@ -350,8 +512,13 @@ class MessageManager:
             chat_id: The chat ID to clean up.
             keep_main_menu: If True, the current main menu message will not be deleted.
         """
+        if not self._initialized:
+            logger.warning("MessageManager not initialized. Skipping old message deletion.")
+            return
+            
         if not await self.cache.connect():
             logger.warning("Cache not connected. Skipping message cleanup.")
+            self._metrics["cache_errors"] += 1
             return
 
         pattern = self._get_chat_key_pattern(chat_id)
@@ -385,10 +552,12 @@ class MessageManager:
 
             except (json.JSONDecodeError, TypeError) as e:
                 logger.error(f"Failed to decode message tracking record from key {key}: {e}")
+                self._metrics["cache_errors"] += 1
                 # Delete the malformed key to prevent future errors
                 await self.cache.delete_key(key)
             except Exception as e:
                 logger.error(f"Unexpected error processing key {key} for cleanup: {e}", exc_info=True)
+                self._metrics["cache_errors"] += 1
 
         if deletion_tasks:
             logger.info(f"Attempting to delete {len(deletion_tasks)} messages in chat {chat_id}.")

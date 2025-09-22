@@ -304,8 +304,8 @@ class BotApplication:
     async def _setup_menu_router(self) -> None:
         """Initialize the menu router and menu system coordinator."""
         logger.info("Setting up menu router and menu system coordinator")
+        # Initialize menu system coordinator if all required services are available
         if self.user_service and self.event_bus and self.database_manager and self.bot:
-            # Initialize menu system coordinator
             self.menu_system_coordinator = MenuSystemCoordinator(
                 bot=self.bot,
                 event_bus=self.event_bus,
@@ -317,24 +317,23 @@ class BotApplication:
                 coordinator_success = await self.menu_system_coordinator.initialize()
                 if not coordinator_success:
                     logger.error("Failed to initialize menu system coordinator")
-                    return
             except Exception as e:
                 logger.error("Exception during menu system coordinator initialization", exc_info=True)
-                return
-
-            # Initialize menu router with coordinator
-            self.menu_router = MenuIntegrationRouter(
-                user_service=self.user_service,
-                event_bus=self.event_bus,
-                database_manager=self.database_manager,
-                menu_coordinator=self.menu_system_coordinator
-            )
-            logger.info("Menu router and coordinator set up successfully")
-
-            # Now register the Telegram handlers with the dispatcher
-            self._register_telegram_handlers()
         else:
-            logger.error("Cannot set up menu router due to missing services.")
+            logger.warning("Some services missing for menu system coordinator, continuing without it")
+            self.menu_system_coordinator = None
+
+        # Initialize menu router with available services
+        self.menu_router = MenuIntegrationRouter(
+            user_service=self.user_service,
+            event_bus=self.event_bus,
+            database_manager=self.database_manager,
+            menu_coordinator=self.menu_system_coordinator
+        )
+        logger.info("Menu router set up successfully")
+
+        # Now register the Telegram handlers with the dispatcher
+        self._register_telegram_handlers()
 
     def _setup_command_handlers(self) -> None:
         """Set up the command handlers with the router."""
@@ -354,11 +353,20 @@ class BotApplication:
             self.command_handler = CommandHandler()
             self.telegram_command_handler = TelegramCommandHandler()
         
-        # Register command handlers
-        self.router.register_command_handler("start", self.command_handler.handle_start)
-        self.router.register_command_handler("menu", self.command_handler.handle_menu)
-        self.router.register_command_handler("help", self.command_handler.handle_help)
-        self.router.set_default_handler(self.command_handler.handle_unknown)
+        # Register command handlers with the menu router if available, otherwise with main router
+        router_to_use = self.menu_router if self.menu_router else self.router
+        
+        # Debug logging to see which router we're using
+        logger.debug("Registering command handlers with router: %s", type(router_to_use).__name__)
+        
+        router_to_use.register_command_handler("start", self.command_handler.handle_start)
+        router_to_use.register_command_handler("menu", self.command_handler.handle_menu)
+        router_to_use.register_command_handler("help", self.command_handler.handle_help)
+        router_to_use.set_default_handler(self.command_handler.handle_unknown)
+        
+        # Debug logging to verify handlers are registered
+        logger.debug("Command handlers registered. Available commands: %s", 
+                   list(router_to_use._command_handlers.keys()) if hasattr(router_to_use, '_command_handlers') else "Unknown")
         
         logger.debug("Command handlers set up successfully")
     

@@ -263,3 +263,24 @@
 
 # 2025-09-22 01:29:21.601543
 +/run python -m src.main
+
+# 2025-09-22 12:48:20.317035
++/add src/core/application.py
+
+# 2025-09-22 12:48:49.567005
++/add src/main.py
+
+# 2025-09-22 12:50:27.925134
++Ayúdame con un problema con mi bot que no cierra al oprimir ctrl+c
+
+# 2025-09-22 12:54:50.877628
++No, pone esto pero sigue activo
++
++INFO:aiogram.dispatcher:Polling stopped
+
+# 2025-09-22 12:59:53.992481
++Ahora poner algo más, pero sigue activo , te mando reloj completo de arranque y al oprimir ctrl-c 
++
++registered                                                 INFO:aiogram.dispatcher:Start polling                      WARNING:src.shared.registry.module_registry:Failed to publish state change event: Unsupported event type: module_state_changed                                                   WARNING:src.shared.registry.module_registry:Failed to publish state change event: Unsupported event type: module_state_changed
++WARNING:src.shared.registry.module_registry:Failed to publish state change event: Unsupported event type: module_state_changed                                                   WARNING:src.shared.registry.module_registry:Failed to publish state change event: Unsupported event type: module_state_changed                                                   WARNING:src.shared.registry.module_registry:Failed to publish state change event: Unsupported event type: module_state_changed                                                   WARNING:src.shared.registry.module_registry:Failed to publish state change event: Unsupported event type: module_state_changed                                                   INFO:aiogram.dispatcher:Run polling for bot @El_Mayordomobot id=7360762013 - 'El Mayordomo del Diván'                 ^CWARNING:aiogram.dispatcher:Received SIGINT signal
++INFO:aiogram.dispatcher:Polling stopped for bot @El_Mayordomobot id=7360762013 - 'El Mayordomo del Diván'             INFO:aiogram.dispatcher:Polling stopped  
