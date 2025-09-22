@@ -41,7 +41,7 @@ class CoordinatorService:
     
     def __init__(self, database_manager: DatabaseManager, event_bus: EventBus,
                  user_service: UserService, subscription_service: SubscriptionService,
-                 narrative_service: NarrativeService):
+                 narrative_service: Optional[NarrativeService] = None):
         """Initialize the coordinator service.
         
         Args:
@@ -49,7 +49,7 @@ class CoordinatorService:
             event_bus (EventBus): Event bus instance
             user_service (UserService): User service instance
             subscription_service (SubscriptionService): Subscription service instance
-            narrative_service (NarrativeService): Narrative service instance
+            narrative_service (Optional[NarrativeService]): Narrative service instance (can be None initially)
         """
         self.database_manager = database_manager
         self.event_bus = event_bus
@@ -60,7 +60,7 @@ class CoordinatorService:
         # Event buffer for ordering
         self._event_buffer: Dict[str, List[Dict[str, Any]]] = {}
         
-        logger.info("CoordinatorService initialized")
+        logger.info("CoordinatorService initialized (narrative_service may be set later)")
     
     async def process_user_interaction(self, user_id: str, action: str, context: Dict[str, Any]) -> bool:
         """Handle user interaction workflows.
@@ -278,6 +278,11 @@ class CoordinatorService:
             logger.error("Error processing buffered events: %s", str(e))
             # Don't clear buffer on error to allow for retry
     
+    def set_narrative_service(self, narrative_service: NarrativeService) -> None:
+        """Set the narrative service after initialization to avoid circular dependencies."""
+        self.narrative_service = narrative_service
+        logger.info("Narrative service set for CoordinatorService")
+
     async def handle_out_of_order_events(self, user_id: str, event: Dict[str, Any]) -> bool:
         """Handle out of order events by buffering and reordering.
         

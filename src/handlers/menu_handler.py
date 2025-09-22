@@ -31,7 +31,9 @@ class MenuHandlerSystem(BaseHandler):
         self.event_bus = event_bus
         self.menu_factory = menu_factory
         self.message_manager = message_manager
-        logger.info("MenuHandlerSystem initialized.")
+        # Initialize coordinator service to None - it will be set up later
+        self.coordinator_service = None
+        logger.info("MenuHandlerSystem initialized with basic services.")
 
     async def handle(self, update: Any) -> Optional[CommandResponse]:
         """Generic handler entry point, routes to specific handlers."""
@@ -191,6 +193,11 @@ class MenuHandlerSystem(BaseHandler):
         
         reply_markup = InlineKeyboardMarkup(inline_keyboard=buttons)
         return text, reply_markup
+
+    def set_coordinator_service(self, coordinator_service):
+        """Set the coordinator service after initialization to avoid circular dependencies."""
+        self.coordinator_service = coordinator_service
+        logger.info("Coordinator service set for MenuHandlerSystem.")
 
     async def _track_lucien_evaluation(self, user_id: str, user_action: str, 
                                      context: Dict[str, Any]) -> None:

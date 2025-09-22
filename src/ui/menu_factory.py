@@ -1034,14 +1034,11 @@ class MenuFactory:
         self.menu_definitions = self._initialize_menu_definitions()
         self.cache_manager = cache_manager
         # Initialize cache connection only when running in async context
-        try:
-            asyncio.create_task(self.cache_manager.connect())
-        except RuntimeError:
-            # No event loop running, cache will connect when needed
-            pass
-
+        # Use a flag to track if we're connected to avoid multiple connection attempts
+        self._cache_connected = False
         # Callback data mapping for compression
         self.callback_mapping = {}
+        logger.info("MenuFactory initialized (cache connection will be established on first use)")
 
     def _initialize_menu_definitions(self) -> Dict[str, Dict]:
         """Initialize static menu definitions for organic menu system."""
@@ -1149,16 +1146,33 @@ class MenuFactory:
 
     async def create_menu(self, menu_type: MenuType, user_context: Dict[str, Any], **kwargs) -> Menu:
         """Create menu based on type and user context, with caching."""
-        cached_menu = await self.cache_manager.get_menu(menu_type.value, user_context)
-        if cached_menu:
-            return cached_menu
+        # Try to use cache if available and connected
+        try:
+            if not self._cache_connected:
+                await self.cache_manager.connect()
+                self._cache_connected = True
+                logger.info("Cache manager connected successfully")
+            
+            cached_menu = await self.cache_manager.get_menu(menu_type.value, user_context)
+            if cached_menu:
+                return cached_menu
+        except Exception as e:
+            logger.warning(f"Cache operation failed, proceeding without cache: {str(e)}")
+            # Continue without cache if there's an error
 
+        # Build the menu
         if menu_type in self.builders:
             new_menu = self.builders[menu_type].build_menu(user_context, **kwargs)
         else:
             new_menu = self._create_basic_menu(menu_type, user_context)
 
-        await self.cache_manager.set_menu(new_menu, user_context)
+        # Try to cache the new menu
+        try:
+            if self._cache_connected:
+                await self.cache_manager.set_menu(new_menu, user_context)
+        except Exception as e:
+            logger.warning(f"Failed to cache menu: {str(e)}")
+            
         return new_menu
 
     async def create_organic_store_menu(self, user_context: Dict[str, Any]) -> Menu:
