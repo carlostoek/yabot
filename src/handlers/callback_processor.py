@@ -136,16 +136,20 @@ class CallbackProcessor:
     """
 
     def __init__(
-        self, 
-        action_dispatcher: ActionDispatcher, 
-        message_manager: MessageManager, 
+        self,
         menu_factory: MenuFactory,
+        message_manager: MessageManager,
+        performance_monitor = None,
         event_bus: Optional[EventBus] = None
     ):
-        self.action_dispatcher = action_dispatcher
-        self.message_manager = message_manager
         self.menu_factory = menu_factory
+        self.message_manager = message_manager
+        self.performance_monitor = performance_monitor
         self.event_bus = event_bus
+
+        # Initialize action dispatcher
+        self.action_dispatcher = ActionDispatcher(event_bus)
+
         logger.info("CallbackProcessor initialized.")
 
     async def process_callback(
@@ -170,8 +174,17 @@ class CallbackProcessor:
 
         if not self.validate_callback_data(callback_data):
             logger.warning(f"Invalid callback data received: {callback_data}")
+
+            # Send auto-cleanup error notification
+            if hasattr(self.message_manager, 'send_auto_cleanup_notification'):
+                await self.message_manager.send_auto_cleanup_notification(
+                    chat_id,
+                    "❌ Acción inválida. Por favor, intenta de nuevo.",
+                    'error_message'
+                )
+
             result = CallbackActionResult(success=False, response_message="Invalid action.")
-            
+
             # Publish event for invalid callback
             if self.event_bus:
                 try:
@@ -185,7 +198,7 @@ class CallbackProcessor:
                     await self.event_bus.publish("invalid_callback", event.dict())
                 except Exception as e:
                     logger.error(f"Failed to publish invalid callback event: {e}")
-            
+
             return result
 
         # Handle worthiness explanation requests
@@ -219,7 +232,7 @@ class CallbackProcessor:
             menu_id = callback_data.split(":", 1)[1]
             new_menu = await self.menu_factory.create_menu(menu_id, user_context)
             result = CallbackActionResult(success=True, new_menu=new_menu)
-            
+
             # Publish event for menu navigation
             if self.event_bus:
                 try:
@@ -233,6 +246,8 @@ class CallbackProcessor:
                     await self.event_bus.publish("menu_navigation", event.dict())
                 except Exception as e:
                     logger.error(f"Failed to publish menu navigation event: {e}")
+
+            return result
         else:
             # Handle action dispatch
             try:

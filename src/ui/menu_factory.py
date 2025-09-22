@@ -229,34 +229,63 @@ class Menu:
             logger.warning(f"Menu '{self.menu_id}' is too deep in hierarchy: {len(self.navigation_path)} levels")
 
     def _add_navigation_items(self) -> None:
-        """Add back navigation and home buttons to the menu."""
+        """Add enhanced navigation items with smart breadcrumb functionality."""
         navigation_items = []
 
-        # Add back button if we have a parent or navigation path
+        # Create breadcrumb if we have navigation history
+        breadcrumb_text = self._generate_breadcrumb()
+
+        # Add back button with context if we have a parent or navigation path
         if self.parent_menu_id or self.navigation_path:
             back_target = self.parent_menu_id or (self.navigation_path[-1] if self.navigation_path else "main_menu")
+            back_text = f"◀️ {breadcrumb_text}" if breadcrumb_text else "◀️ Atrás"
             navigation_items.append(MenuItem(
                 id="nav_back",
-                text="<b>◀️ Atrás</b>",
+                text=back_text,
                 action_type=ActionType.CALLBACK,
                 action_data=f"menu:{back_target}",
                 description="Volver al menú anterior",
-                icon="◀️"
+                icon="◀️",
+                metadata={"is_navigation": True, "priority": 1000}
             ))
 
         # Add home button if we're not already in main menu
         if self.menu_id != "main_menu":
             navigation_items.append(MenuItem(
                 id="nav_home",
-                text="<b>🏠 Inicio</b>",
+                text="🏠 Inicio",
                 action_type=ActionType.CALLBACK,
                 action_data="menu:main_menu",
                 description="Ir al menú principal",
-                icon="🏠"
+                icon="🏠",
+                metadata={"is_navigation": True, "priority": 999}
             ))
 
         # Add navigation items to the menu (at the end)
         self.items.extend(navigation_items)
+
+    def _generate_breadcrumb(self) -> str:
+        """Generate compact breadcrumb for navigation context."""
+        if not self.navigation_path:
+            return ""
+
+        # Map menu IDs to short names
+        menu_names = {
+            "main_menu": "Inicio",
+            "narrative_menu": "Historia",
+            "experiences_menu": "Experiencias",
+            "organic_store_menu": "Tesoros",
+            "personal_universe_menu": "Mi Universo",
+            "divan_menu": "Diván",
+            "admin_menu": "Admin"
+        }
+
+        # Get the last menu in path for context
+        if self.navigation_path:
+            last_menu = self.navigation_path[-1]
+            return menu_names.get(last_menu, "Menú")
+
+        return ""
 
 
 class MenuBuilder(ABC):
@@ -327,24 +356,28 @@ class MainMenuBuilder(MenuBuilder):
             # Core navigation items - always visible
             items = [
                 MenuItem(
-                    id="historia_diana", text="<b>🎭 Historia con Diana</b>", action_type=ActionType.SUBMENU,
+                    id="historia_diana", text="🎭 Historia con Diana", action_type=ActionType.SUBMENU,
                     action_data="narrative_menu", description="Tu narrativa personal en evolución",
-                    required_role=UserRole.FREE_USER, icon="🎭"
+                    required_role=UserRole.FREE_USER, icon="🎭",
+                    metadata={"navigation_priority": 100, "category": "main_content"}
                 ),
                 MenuItem(
-                    id="experiencias_interactivas", text="<b>🎮 Experiencias Interactivas</b>", action_type=ActionType.SUBMENU,
+                    id="experiencias_interactivas", text="🎮 Experiencias Interactivas", action_type=ActionType.SUBMENU,
                     action_data="experiences_menu", description="Misiones, juegos y desafíos",
-                    required_role=UserRole.FREE_USER, icon="🎮"
+                    required_role=UserRole.FREE_USER, icon="🎮",
+                    metadata={"navigation_priority": 90, "category": "main_content"}
                 ),
                 MenuItem(
-                    id="coleccion_tesoros", text="<b>🏪 Colección de Tesoros</b>", action_type=ActionType.SUBMENU,
+                    id="coleccion_tesoros", text="🏪 Colección de Tesoros", action_type=ActionType.SUBMENU,
                     action_data="organic_store_menu", description="Fragmentos, joyas y máscaras emocionales",
-                    required_role=UserRole.FREE_USER, icon="🏪"
+                    required_role=UserRole.FREE_USER, icon="🏪",
+                    metadata={"navigation_priority": 80, "category": "main_content"}
                 ),
                 MenuItem(
-                    id="universo_personal", text="<b>🎒 Mi Universo Personal</b>", action_type=ActionType.SUBMENU,
+                    id="universo_personal", text="🎒 Mi Universo Personal", action_type=ActionType.SUBMENU,
                     action_data="personal_universe_menu", description="Tu progreso y tesoros acumulados",
-                    required_role=UserRole.FREE_USER, icon="🎒"
+                    required_role=UserRole.FREE_USER, icon="🎒",
+                    metadata={"navigation_priority": 70, "category": "main_content"}
                 )
             ]
 
@@ -355,9 +388,10 @@ class MainMenuBuilder(MenuBuilder):
             # Add admin panel for admins
             if user_role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
                 items.append(MenuItem(
-                    id="admin_panel", text="<b>⚙️ Panel Admin</b>", action_type=ActionType.SUBMENU,
+                    id="admin_panel", text="⚙️ Panel Admin", action_type=ActionType.SUBMENU,
                     action_data="admin_menu", description="Herramientas administrativas",
-                    required_role=UserRole.ADMIN, icon="⚙️"
+                    required_role=UserRole.ADMIN, icon="⚙️",
+                    metadata={"navigation_priority": 10, "category": "admin"}
                 ))
 
             # Process items with Lucien voice enhancements
@@ -471,19 +505,21 @@ class MainMenuBuilder(MenuBuilder):
         if has_vip and narrative_level >= 4 and worthiness_score >= 0.6:
             # Full access
             return MenuItem(
-                id="el_divan_acceso", text="<b>🛋️ El Diván</b>", action_type=ActionType.SUBMENU,
+                id="el_divan_acceso", text="🛋️ El Diván", action_type=ActionType.SUBMENU,
                 action_data="divan_menu", description="Tu espacio íntimo de comprensión profunda",
-                required_role=UserRole.FREE_USER, icon="🛋️"
+                required_role=UserRole.FREE_USER, icon="🛋️",
+                metadata={"navigation_priority": 60, "category": "vip_content", "access_status": "granted"}
             )
         else:
             # Visible but with Lucien's elegant explanation
             worthiness_explanation = await self._generate_worthiness_explanation(user_context)
             return MenuItem(
-                id="el_divan_evaluacion", text="<b>🛋️ El Diván</b> ✨", action_type=ActionType.CALLBACK,
+                id="el_divan_evaluacion", text="🛋️ El Diván ✨", action_type=ActionType.CALLBACK,
                 action_data="explain_divan_worthiness",
                 description="Un privilegio que se gana a través del desarrollo personal",
                 required_role=UserRole.FREE_USER, icon="🛋️",
-                lucien_voice_text=worthiness_explanation
+                lucien_voice_text=worthiness_explanation,
+                metadata={"navigation_priority": 60, "category": "vip_content", "access_status": "restricted"}
             )
 
     def _create_worthiness_check(self, item_id: str, current_worthiness: float, required_worthiness: float) -> str:
