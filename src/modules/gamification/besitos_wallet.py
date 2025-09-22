@@ -3,6 +3,8 @@ Besitos wallet module for the YABOT system.
 
 This module provides atomic virtual currency transaction management for besitos,
 implementing requirements 2.1, 2.2, and 6.5 from the modulos-atomicos specification.
+Enhanced with Lucien's sophisticated voice for transaction handling as per
+ux-enhanced specification task 19.
 """
 
 import uuid
@@ -19,6 +21,11 @@ from src.database.schemas.gamification import (
 from src.events.bus import EventBus
 from src.events.models import BesitosAwardedEvent, BesitosSpentEvent, create_event
 from src.utils.logger import get_logger
+from src.ui.lucien_voice_generator import (
+    LucienVoiceProfile,
+    generate_lucien_response,
+    RelationshipLevel
+)
 
 logger = get_logger(__name__)
 
@@ -57,7 +64,8 @@ class BesitosWallet:
 
     This class implements atomic besitos transactions using MongoDB sessions
     and publishes appropriate events to the event bus for integration with
-    the rest of the YABOT system.
+    the rest of the YABOT system. Enhanced with Lucien's sophisticated 
+    transaction handling as per ux-enhanced specification.
     """
 
     def __init__(self, mongodb_handler: MongoDBHandler, event_bus: EventBus):
@@ -73,6 +81,62 @@ class BesitosWallet:
         self.transactions_collection: Collection = mongodb_handler.get_besitos_transactions_collection()
 
         logger.info("BesitosWallet initialized")
+
+    async def _generate_lucien_transaction_message(self, user_id: str, amount: int, 
+                                                 transaction_type: TransactionType, 
+                                                 reason: str) -> str:
+        """Generate a sophisticated Lucien voice message for besitos transactions.
+        
+        Args:
+            user_id: User ID for the transaction
+            amount: Amount of besitos involved
+            transaction_type: Type of transaction (AWARDED or SPENT)
+            reason: Reason for the transaction
+            
+        Returns:
+            str: Lucien's sophisticated transaction message
+        """
+        try:
+            # Create a basic Lucien voice profile
+            lucien_profile = LucienVoiceProfile()
+            
+            # For now, we'll use default relationship level
+            # In a full implementation, this would be based on user's actual relationship with Lucien
+            
+            # Generate context for the transaction
+            lucien_context = {
+                "transaction_type": transaction_type.value,
+                "amount": amount,
+                "reason": reason,
+                "user_id": user_id
+            }
+            
+            # Generate Lucien's response
+            lucien_response = generate_lucien_response(lucien_profile, f"besitos_{transaction_type.value}", lucien_context)
+            
+            if lucien_response and lucien_response.response_text:
+                return lucien_response.response_text
+            
+            # Fallback messages based on transaction type
+            if transaction_type == TransactionType.AWARDED:
+                if amount > 100:
+                    return "Excelente elección. Procederé con esta transacción particularmente generosa..."
+                elif amount > 50:
+                    return "Una transacción adecuada. Procederé con la contabilidad apropiada..."
+                else:
+                    return "Una transacción modesta pero apropiada. Registraré los detalles..."
+            else:  # SPENT
+                if amount > 100:
+                    return "Una inversión considerable. Evaluaré cuidadosamente su valor..."
+                elif amount > 50:
+                    return "Un gasto moderado pero justificado. Procederé con la transacción..."
+                else:
+                    return "Un pequeño gasto. Registraré los detalles apropiadamente..."
+                    
+        except Exception as e:
+            logger.warning("Failed to generate Lucien transaction message: %s", str(e))
+            # Fallback to generic message
+            return "Procederé con esta transacción y registraré los detalles apropiadamente..."
 
     async def add_besitos(self, user_id: str, amount: int, reason: str,
                          source: str = "system", reference_id: Optional[str] = None,
@@ -101,6 +165,12 @@ class BesitosWallet:
             raise ValueError("Amount must be positive")
 
         logger.info("Adding %d besitos to user %s for reason: %s", amount, user_id, reason)
+
+        # Generate Lucien's sophisticated transaction message
+        lucien_message = await self._generate_lucien_transaction_message(
+            user_id, amount, TransactionType.AWARDED, reason
+        )
+        logger.info("Lucien transaction message: %s", lucien_message)
 
         transaction_id = str(uuid.uuid4())
         metadata = metadata or {}
@@ -226,6 +296,12 @@ class BesitosWallet:
 
         logger.info("Spending %d besitos from user %s for reason: %s", amount, user_id, reason)
 
+        # Generate Lucien's sophisticated transaction message
+        lucien_message = await self._generate_lucien_transaction_message(
+            user_id, amount, TransactionType.SPENT, reason
+        )
+        logger.info("Lucien transaction message: %s", lucien_message)
+
         transaction_id = str(uuid.uuid4())
         metadata = metadata or {}
 
@@ -318,6 +394,111 @@ class BesitosWallet:
             except Exception as e:
                 logger.error("Unexpected error spending besitos for user %s: %s", user_id, str(e))
                 raise BesitosWalletError(f"Unexpected error: {str(e)}")
+
+    def _generate_lucien_award_commentary(self, user_id: str, amount: int, reason: str,
+                                        balance_before: int, balance_after: int) -> str:
+        """Generate Lucien's sophisticated commentary for besitos award transactions.
+
+        Args:
+            user_id: User ID
+            amount: Amount awarded
+            reason: Reason for award
+            balance_before: Balance before transaction
+            balance_after: Balance after transaction
+
+        Returns:
+            str: Lucien's commentary on the transaction
+        """
+        try:
+            # Create a basic Lucien voice profile
+            lucien_profile = LucienVoiceProfile()
+            
+            # Generate context for Lucien's response
+            lucien_context = {
+                "transaction_type": "award",
+                "amount": amount,
+                "reason": reason,
+                "balance_before": balance_before,
+                "balance_after": balance_after,
+                "user_id": user_id
+            }
+            
+            # Generate Lucien's response
+            lucien_response = generate_lucien_response(
+                lucien_profile, 
+                f"besitos_award_{reason}", 
+                lucien_context
+            )
+            
+            if lucien_response and lucien_response.response_text:
+                return lucien_response.response_text
+            
+            # Fallback commentary based on relationship level
+            if lucien_profile.user_relationship_level == RelationshipLevel.TRUSTED_CONFIDANT:
+                return f"Excelente elección. Esta recompensa refleja su progreso excepcional."
+            elif lucien_profile.user_relationship_level == RelationshipLevel.RELUCTANT_APPRECIATOR:
+                return f"Su desarrollo es... notable. Esta recompensa lo reconoce apropiadamente."
+            else:
+                return f"Esta transacción ha sido procesada con la eficiencia que usted merece."
+                
+        except Exception as e:
+            logger.warning("Failed to generate Lucien award commentary: %s", str(e))
+            return "Esta transacción ha sido procesada con la eficiencia que usted merece."
+
+    def _generate_lucien_spend_commentary(self, user_id: str, amount: int, reason: str,
+                                        item_id: Optional[str], balance_before: int, 
+                                        balance_after: int) -> str:
+        """Generate Lucien's sophisticated commentary for besitos spending transactions.
+
+        Args:
+            user_id: User ID
+            amount: Amount spent
+            reason: Reason for spending
+            item_id: Optional item ID
+            balance_before: Balance before transaction
+            balance_after: Balance after transaction
+
+        Returns:
+            str: Lucien's commentary on the transaction
+        """
+        try:
+            # Create a basic Lucien voice profile
+            lucien_profile = LucienVoiceProfile()
+            
+            # Generate context for Lucien's response
+            lucien_context = {
+                "transaction_type": "spend",
+                "amount": amount,
+                "reason": reason,
+                "item_id": item_id,
+                "balance_before": balance_before,
+                "balance_after": balance_after,
+                "user_id": user_id
+            }
+            
+            # Generate Lucien's response
+            lucien_response = generate_lucien_response(
+                lucien_profile, 
+                f"besitos_spend_{reason}", 
+                lucien_context
+            )
+            
+            if lucien_response and lucien_response.response_text:
+                return lucien_response.response_text
+            
+            # Fallback commentary based on relationship level and balance
+            if balance_after < balance_before * 0.1:
+                return "Una transacción... significativa. Observaré con interés sus elecciones futuras."
+            elif lucien_profile.user_relationship_level == RelationshipLevel.TRUSTED_CONFIDANT:
+                return "Su discernimiento en estas transacciones es... admirable."
+            elif lucien_profile.user_relationship_level == RelationshipLevel.RELUCTANT_APPRECIATOR:
+                return "Una elección interesante. Veamos cómo se desarrolla su experiencia."
+            else:
+                return "Esta transacción ha sido procesada con la eficiencia que usted merece."
+                
+        except Exception as e:
+            logger.warning("Failed to generate Lucien spend commentary: %s", str(e))
+            return "Esta transacción ha sido procesada con la eficiencia que usted merece."
 
     async def get_balance(self, user_id: str) -> int:
         """Get user's current besitos balance.

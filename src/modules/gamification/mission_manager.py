@@ -3,6 +3,8 @@ Mission manager module for the YABOT system.
 
 This module provides mission assignment and tracking functionality,
 implementing requirements 2.3, 2.4, and 4.4 from the modulos-atomicos specification.
+Enhanced with Lucien's sophisticated mission presentation as per
+ux-enhanced specification task 20.
 """
 
 import uuid
@@ -20,6 +22,12 @@ from src.database.schemas.gamification import (
 from src.events.bus import EventBus
 from src.events.models import DecisionMadeEvent, MissionCompletedEvent, BesitosAwardedEvent
 from src.utils.logger import get_logger
+from src.ui.lucien_voice_generator import (
+    LucienVoiceProfile,
+    generate_lucien_response,
+    RelationshipLevel,
+    LucienMissionPresentation
+)
 
 logger = get_logger(__name__)
 
@@ -57,6 +65,7 @@ class MissionManager:
     - Publish mission_completed events when missions are finished
     - Subscribe to decision_made events to trigger mission assignments
     - Support mission templates and dynamic mission generation
+    - Present missions through Lucien's sophisticated evaluation system
     """
 
     def __init__(self, mongodb_handler: MongoDBHandler, event_bus: EventBus):
@@ -131,6 +140,110 @@ class MissionManager:
 
         logger.info("MissionManager initialized with %d mission templates",
                    sum(len(templates) for templates in self.mission_templates.values()))
+
+    async def _generate_lucien_mission_presentation(self, user_id: str, mission: Mission) -> LucienMissionPresentation:
+        """Generate a sophisticated Lucien voice presentation for a mission.
+        
+        Args:
+            user_id: User ID for the mission
+            mission: Mission to present
+            
+        Returns:
+            LucienMissionPresentation: Lucien's sophisticated mission presentation
+        """
+        try:
+            # For now, we'll create a basic Lucien voice profile
+            # In a full implementation, this would be based on user's actual relationship with Lucien
+            lucien_profile = LucienVoiceProfile()
+            
+            # Generate context for the mission presentation
+            lucien_context = {
+                "mission_type": mission.type.value,
+                "mission_title": mission.title,
+                "mission_description": mission.description,
+                "reward_besitos": mission.reward_besitos,
+                "objectives_count": len(mission.objectives),
+                "user_id": user_id
+            }
+            
+            # Generate Lucien's response
+            lucien_response = generate_lucien_response(lucien_profile, f"mission_{mission.type.value}", lucien_context)
+            
+            # Create LucienMissionPresentation instance
+            presentation = LucienMissionPresentation(
+                mission_id=mission.mission_id,
+                lucien_introduction=lucien_response.response_text if lucien_response and lucien_response.response_text else 
+                                  f"Permítame presentarle un desafío apropiado para su nivel: {mission.title}",
+                mission_description_elevated=mission.description,
+                worthiness_assessment="Este desafío evaluará su progreso y determinación.",
+                completion_celebration="Su completitud será reconocida apropiadamente.",
+                archetype_adaptation={}
+            )
+            
+            return presentation
+            
+        except Exception as e:
+            logger.warning("Failed to generate Lucien mission presentation: %s", str(e))
+            # Fallback to basic presentation
+            return LucienMissionPresentation(
+                mission_id=mission.mission_id,
+                lucien_introduction=f"Permítame presentarle un desafío apropiado para su nivel: {mission.title}",
+                mission_description_elevated=mission.description,
+                worthiness_assessment="Este desafío evaluará su progreso y determinación.",
+                completion_celebration="Su completitud será reconocida apropiadamente.",
+                archetype_adaptation={}
+            )
+
+    async def assign_mission(self, user_id: str, mission_type: MissionType,
+                           template_override: Optional[Dict[str, Any]] = None) -> Mission:
+        """Assign a mission to a user based on type and optional template override.
+
+        Args:
+            user_id (str): User ID to assign mission to
+            mission_type (MissionType): Type of mission to assign
+            template_override (Dict[str, Any], optional): Override mission template data
+
+        Returns:
+            Mission: Created mission instance
+
+        Raises:
+            InvalidMissionError: If mission type is invalid or template not found
+        """
+        try:
+            logger.debug("Assigning %s mission to user %s", mission_type.value, user_id)
+
+            # Check if user already has an active mission of this type
+            existing_mission = await self._get_active_mission(user_id, mission_type)
+            if existing_mission:
+                logger.debug("User %s already has active %s mission", user_id, mission_type.value)
+                return Mission(**existing_mission)
+
+            # Select mission template
+            template = template_override or self._select_mission_template(mission_type)
+            if not template:
+                raise InvalidMissionError(f"No template found for mission type: {mission_type}")
+
+            # Create mission from template
+            mission = await self._create_mission_from_template(user_id, mission_type, template)
+
+            # Generate Lucien's sophisticated mission presentation
+            lucien_presentation = await self._generate_lucien_mission_presentation(user_id, mission)
+            logger.info("Lucien mission presentation: %s", lucien_presentation.lucien_introduction)
+
+            # Save mission to database
+            mission_doc = mission.dict()
+            mission_doc["_id"] = mission.mission_id  # Use mission_id as MongoDB _id
+
+            await self.missions.insert_one(mission_doc)
+
+            logger.info("Assigned %s mission '%s' to user %s",
+                       mission_type.value, mission.title, user_id)
+
+            return mission
+
+        except Exception as e:
+            logger.error("Error assigning mission to user %s: %s", user_id, str(e))
+            raise MissionManagerError(f"Failed to assign mission: {str(e)}")
 
     async def initialize(self) -> bool:
         """Initialize the mission manager and subscribe to events.
@@ -471,6 +584,20 @@ class MissionManager:
         try:
             # Distribute rewards
             reward = await self._distribute_rewards(mission)
+
+            # Generate Lucien's sophisticated completion celebration
+            lucien_profile = LucienVoiceProfile()
+            lucien_context = {
+                "mission_title": mission.title,
+                "reward_besitos": mission.reward_besitos,
+                "completion_type": "mission"
+            }
+            
+            lucien_response = generate_lucien_response(lucien_profile, "mission_completed", lucien_context)
+            lucien_celebration = lucien_response.response_text if lucien_response and lucien_response.response_text else \
+                                f"Excelente trabajo. Su completitud de '{mission.title}' ha sido registrada apropiadamente."
+            
+            logger.info("Lucien completion celebration: %s", lucien_celebration)
 
             # Publish mission_completed event (Requirement 2.4)
             await self._publish_mission_completed_event(mission, reward)

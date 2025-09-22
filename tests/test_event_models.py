@@ -217,7 +217,7 @@ def test_update_received_event():
 def test_event_models_dict():
     """Test EVENT_MODELS dictionary."""
     assert isinstance(EVENT_MODELS, dict)
-    assert len(EVENT_MODELS) == 34
+    assert len(EVENT_MODELS) == 38
     
     # Check that some key models are present
     expected_types = [

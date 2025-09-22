@@ -34,6 +34,7 @@ class ModuleState(Enum):
 
 class ModuleHealthStatus(Enum):
     """Enumeration of possible module health statuses."""
+    UNKNOWN = "unknown"
     HEALTHY = "healthy"
     DEGRADED = "degraded"
     UNHEALTHY = "unhealthy"

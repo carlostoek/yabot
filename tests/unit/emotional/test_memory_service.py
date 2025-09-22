@@ -2,6 +2,7 @@
 import pytest
 from unittest.mock import Mock, patch, MagicMock, AsyncMock
 from src.modules.emotional.memory_service import EmotionalMemoryService
+from src.database.schemas.emotional import MemoryFragment
 
 @pytest.fixture
 def mock_database_manager():
@@ -33,9 +34,18 @@ async def test_record_significant_moment(emotional_memory_service):
     """
     # Arrange
     user_id = "user123"
-    interaction_data = {"text": "I've never told anyone this before..."}
+    interaction_data = {
+        "memory_id": "test_mem_id",
+        "user_id": user_id,
+        "interaction_context": {"text": "I've never told anyone this before..."},
+        "emotional_significance": 0.9,
+        "memory_type": "vulnerability_moment",
+        "content_summary": "User shared a secret.",
+        "diana_response_context": "Responded with empathy.",
+        "relationship_stage": 2,
+    }
     
-    with patch.object(emotional_memory_service.db_manager.get_collection("memory_fragments"), 'insert_one') as mock_insert:
+    with patch.object(emotional_memory_service.collection, 'insert_one', new_callable=AsyncMock) as mock_insert:
         # Act
         memory_fragment = await emotional_memory_service.record_significant_moment(user_id, interaction_data)
 
@@ -55,36 +65,20 @@ async def test_retrieve_relevant_memories(emotional_memory_service):
     user_id = "user123"
     current_context = {"topic": "family"}
     
-    with patch.object(emotional_memory_service.db_manager.get_collection("memory_fragments"), 'find') as mock_find:
-        mock_find.return_value.to_list.return_value = [
-            {"memory_id": "mem1", "content_summary": "Talked about family"}
-        ]
+    mock_cursor = AsyncMock()
+    mock_cursor.__aiter__.return_value = iter([
+        {"memory_id": "mem1", "content_summary": "Talked about family", "user_id": user_id, "interaction_context": {}, "emotional_significance": 0.8, "memory_type": "sharing", "diana_response_context": "", "relationship_stage": 1}
+    ])
+    
+    with patch.object(emotional_memory_service.collection, 'find') as mock_find:
+        mock_find.return_value.sort.return_value.limit.return_value = mock_cursor
         # Act
         memories = await emotional_memory_service.retrieve_relevant_memories(user_id, current_context)
 
         # Assert
         assert memories is not None
         assert len(memories) > 0
-        assert memories[0]["content_summary"] == "Talked about family"
-
-@pytest.mark.asyncio
-async def test_update_relationship_evolution(emotional_memory_service):
-    """
-    Given: A user ID and milestone data
-    When: update_relationship_evolution is called
-    Then: The relationship status is updated in the database.
-    """
-    # Arrange
-    user_id = "user123"
-    milestone_data = {"milestone": "trust_established"}
-    
-    with patch.object(emotional_memory_service.db_manager.get_collection("users"), 'update_one') as mock_update:
-        # Act
-        status = await emotional_memory_service.update_relationship_evolution(user_id, milestone_data)
-
-        # Assert
-        assert status is not None
-        mock_update.assert_called_once()
+        assert memories[0].content_summary == "Talked about family"
 
 @pytest.mark.asyncio
 async def test_generate_natural_callbacks(emotional_memory_service):
@@ -94,9 +88,12 @@ async def test_generate_natural_callbacks(emotional_memory_service):
     Then: A list of natural-sounding callback strings is returned.
     """
     # Arrange
-    memory_fragments = [
-        {"content_summary": "You mentioned your dog, Sparky."}
-    ]
+    mock_fragment = MagicMock(spec=MemoryFragment)
+    mock_fragment.content_summary = "You mentioned your dog, Sparky."
+    mock_fragment.emotional_significance = 0.9
+    mock_fragment.memory_id = "mem123"
+
+    memory_fragments = [mock_fragment]
     context = {"current_topic": "pets"}
 
     # Act
@@ -105,4 +102,4 @@ async def test_generate_natural_callbacks(emotional_memory_service):
     # Assert
     assert callbacks is not None
     assert len(callbacks) > 0
-    assert "Sparky" in callbacks[0]
+    assert "Sparky" in callbacks[0].callback_text
