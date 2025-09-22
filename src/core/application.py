@@ -175,53 +175,61 @@ class BotApplication:
         logger.info("Stopping bot application")
         
         try:
-            # Stop polling if it's running
-            if hasattr(self, '_polling_task') and self._polling_task:
+            # Mark as not running first to prevent processing new updates
+            self._is_running = False
+            
+            # Stop dispatcher polling if it's running
+            if self.dispatcher and hasattr(self.dispatcher, '_polling') and self.dispatcher._polling:
+                try:
+                    await self.dispatcher.stop_polling()
+                    logger.info("Dispatcher polling stopped")
+                except Exception as e:
+                    logger.warning(f"Error stopping dispatcher polling: {e}")
+            
+            # Stop polling task if it's running
+            if hasattr(self, '_polling_task') and self._polling_task and not self._polling_task.done():
                 self._polling_task.cancel()
                 try:
                     await asyncio.wait_for(self._polling_task, timeout=5.0)
+                    logger.info("Polling task stopped")
                 except asyncio.CancelledError:
-                    pass
+                    logger.info("Polling task cancelled successfully")
                 except asyncio.TimeoutError:
-                    logger.warning("Polling task did not cancel within timeout")
-            
-            # Stop dispatcher polling
-            if self.dispatcher:
-                try:
-                    await asyncio.wait_for(self.dispatcher.stop_polling(), timeout=5.0)
+                    logger.warning("Polling task did not stop within timeout")
                 except Exception as e:
-                    logger.warning(f"Error stopping dispatcher polling: {e}")
+                    logger.warning(f"Error waiting for polling task: {e}")
             
             # Close bot session
             if self.bot:
                 try:
-                    await asyncio.wait_for(self.bot.session.close(), timeout=5.0)
+                    await self.bot.session.close()
+                    logger.info("Bot session closed")
                 except Exception as e:
                     logger.warning(f"Error closing bot session: {e}")
             
             # Stop database connections if they exist
             if self.database_manager:
                 try:
-                    await asyncio.wait_for(self.database_manager.close_all(), timeout=10.0)
+                    await self.database_manager.close_all()
+                    logger.info("Database connections closed")
                 except Exception as e:
                     logger.warning(f"Error closing database connections: {e}")
             
             # Stop event bus if it exists
             if self.event_bus:
                 try:
-                    await asyncio.wait_for(self.event_bus.close(), timeout=5.0)
+                    await self.event_bus.close()
+                    logger.info("Event bus closed")
                 except Exception as e:
                     logger.warning(f"Error closing event bus: {e}")
             
             # Stop cache manager if it exists
             if self.cache_manager:
                 try:
-                    await asyncio.wait_for(self.cache_manager.close(), timeout=5.0)
+                    await self.cache_manager.close()
+                    logger.info("Cache manager closed")
                 except Exception as e:
                     logger.warning(f"Error closing cache manager: {e}")
-            
-            # Perform cleanup operations
-            self._is_running = False
             
             logger.info("Bot application stopped successfully")
             return True
@@ -233,7 +241,7 @@ class BotApplication:
             }
             user_message = await self.error_handler.handle_error(e, error_context)
             logger.error("Error during bot shutdown: %s", user_message)
-            # Even if there was an error, we still want to mark the app as not running
+            # Ensure the app is marked as not running
             self._is_running = False
             return False
     

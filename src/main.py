@@ -188,10 +188,6 @@ async def main():
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
     
-    # Initialize the module registry
-    # In a real implementation, we would pass the actual event bus
-    # module_registry = ModuleRegistry(bot_app.event_bus)
-    
     # Initialize the bot application
     bot_app = BotApplication()
     
@@ -203,25 +199,21 @@ async def main():
             logger.error("Failed to start bot application")
         return
     
-    # Initialize atomic modules
-    # await initialize_modules(module_registry)
-    
-    # Initialize backup system
-    # await initialize_backup_system(bot_app.config_manager)
-    
-    # Start health monitoring
-    # await start_health_monitoring(module_registry)
-    
     if logger:
         logger.info("YABOT application started successfully with atomic modules")
     
     # Keep the application running
     try:
-        while bot_app.is_running and not shutdown_event.is_set():
-            # Send heartbeats for modules
-            if module_registry:
-                for module_info in module_registry.get_all_modules():
-                    module_registry.heartbeat(module_info.name)
+        while bot_app.is_running:
+            # Check if shutdown was requested
+            if shutdown_event.is_set():
+                logger.info("Shutdown event detected, initiating shutdown...")
+                break
+                
+            # Send heartbeats for modules (if implemented)
+            # if module_registry:
+            #     for module_info in module_registry.get_all_modules():
+            #         module_registry.heartbeat(module_info.name)
             
             # Wait for either 1 second or shutdown event
             try:
