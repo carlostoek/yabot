@@ -329,11 +329,12 @@ class TelegramMenuRenderer:
             
             # Generate Lucien's response
             menu_prompt = f"Welcome to the {menu_title} menu."
-            lucien_text = generate_lucien_response(
-                menu_prompt,
+            lucien_response = generate_lucien_response(
                 lucien_profile,
+                menu_prompt,
                 context
             )
+            lucien_text = lucien_response.response_text if lucien_response else menu_prompt
             
             return lucien_text
         except Exception as e:

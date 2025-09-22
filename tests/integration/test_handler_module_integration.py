@@ -11,7 +11,6 @@ from datetime import datetime
 from typing import Dict, Any
 
 from src.handlers.telegram_commands import CommandHandler
-from src.handlers.commands import CommandHandler as BaseCommandHandler
 from src.events.bus import EventBus
 from src.services.user import UserService
 from src.core.models import CommandResponse

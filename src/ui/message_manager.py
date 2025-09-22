@@ -454,11 +454,14 @@ class MessageManager:
         old_main_menu_id_str = await self.cache.get_value(main_menu_key)
 
         # Schedule deletion of the old main menu message if it exists
-        if old_main_menu_id_str and int(old_main_menu_id_str) != message_id:
+        if old_main_menu_id_str:
             try:
-                old_main_menu_id = int(old_main_menu_id_str)
-                logger.debug(f"Scheduling old main menu {old_main_menu_id} for deletion.")
-                await self.delete_message(chat_id, old_main_menu_id)
+                # Clean string - remove quotes if present
+                cleaned_id_str = old_main_menu_id_str.strip('"').strip()
+                old_main_menu_id = int(cleaned_id_str)
+                if old_main_menu_id != message_id:
+                    logger.debug(f"Scheduling old main menu {old_main_menu_id} for deletion.")
+                    await self.delete_message(chat_id, old_main_menu_id)
             except (ValueError, TypeError) as e:
                 logger.error(f"Invalid old main menu ID found in cache: {old_main_menu_id_str}. Error: {e}")
 
@@ -534,7 +537,13 @@ class MessageManager:
         if keep_main_menu:
             main_menu_id_str = await self.cache.get_value(self._get_main_menu_key(chat_id))
             if main_menu_id_str:
-                main_menu_id = int(main_menu_id_str)
+                try:
+                    # Clean string - remove quotes if present
+                    cleaned_id_str = main_menu_id_str.strip('"').strip()
+                    main_menu_id = int(cleaned_id_str)
+                except (ValueError, TypeError) as e:
+                    logger.error(f"Invalid main menu ID found in cache: {main_menu_id_str}. Error: {e}")
+                    main_menu_id = -1
 
         deletion_tasks = []
         for key in keys:

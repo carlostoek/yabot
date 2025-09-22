@@ -8,7 +8,7 @@ import os
 from src.core.application import BotApplication
 from src.config.manager import ConfigManager
 from src.core.router import Router
-from src.handlers.commands import CommandHandler
+from src.handlers.telegram_commands import CommandHandler
 
 
 class TestIntegration:

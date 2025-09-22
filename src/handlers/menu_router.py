@@ -77,47 +77,46 @@ class MenuIntegrationRouter(Router):
         logger.debug("Message type: %s", type(message).__name__)
         logger.debug("Menu coordinator available: %s", self.menu_coordinator is not None)
 
-        # Check if this is a menu-related command and we have a coordinator
+        # Use MenuSystemCoordinator for ALL commands if available
         if message.text and message.text.startswith('/') and self.menu_coordinator:
             command = message.text.strip().lower()
             logger.debug(f"Processing command: {command}")
 
-            # Handle /start and /menu commands through the MenuSystemCoordinator
-            if command in ['/start', '/menu', '/help']:
-                logger.info(f"Routing {command} command through MenuSystemCoordinator")
-                try:
-                    result = await self.menu_coordinator.handle_menu_command(message)
-                    logger.debug(f"MenuSystemCoordinator result: {result}")
-                    if result.get("success"):
-                        logger.info(f"MenuSystemCoordinator successfully handled {command}")
-                        return result
-                    else:
-                        logger.warning(f"MenuSystemCoordinator failed for {command}: {result.get('error')}")
-                        # Fall through to standard routing
-                except Exception as e:
-                    logger.error(f"Error in MenuSystemCoordinator for {command}: {e}", exc_info=True)
-                    # Fall through to standard routing
-        else:
-            if not self.menu_coordinator:
-                logger.warning("Menu coordinator not available, using standard routing")
-            if not message.text or not message.text.startswith('/'):
-                logger.debug("Not a command message, using standard routing")
+            # Handle ALL commands through the MenuSystemCoordinator
+            logger.info(f"Routing {command} command through MenuSystemCoordinator")
+            try:
+                result = await self.menu_coordinator.handle_menu_command(message)
+                logger.debug(f"MenuSystemCoordinator result: {result}")
+                if result.get("success"):
+                    logger.info(f"MenuSystemCoordinator successfully handled {command}")
+                    return result
+                else:
+                    logger.warning(f"MenuSystemCoordinator failed for {command}: {result.get('error')}")
+                    # Fall through to standard routing only if coordinator fails
+            except Exception as e:
+                logger.error(f"Error in MenuSystemCoordinator for {command}: {e}", exc_info=True)
+                # Fall through to standard routing only if coordinator fails
 
-        # Standard routing for non-menu commands or when coordinator is not available
-        logger.debug("Using standard routing...")
-        response = await self.route_update(message)
+        # Standard routing only as fallback when coordinator is not available
+        if not self.menu_coordinator:
+            logger.warning("Menu coordinator not available, using standard routing")
+            response = await self.route_update(message)
 
-        # If we got a CommandResponse, send it back to Telegram
-        if response and hasattr(response, 'text'):
-            logger.debug("Sending response back to Telegram: %s", response.text[:50] + "..." if len(response.text) > 50 else response.text)
-            await message.answer(
-                text=response.text,
-                parse_mode=getattr(response, 'parse_mode', 'HTML'),
-                reply_markup=getattr(response, 'reply_markup', None),
-                disable_notification=getattr(response, 'disable_notification', False)
-            )
+            # If we got a CommandResponse, send it back to Telegram
+            if response and hasattr(response, 'text'):
+                logger.debug("Sending response back to Telegram: %s", response.text[:50] + "..." if len(response.text) > 50 else response.text)
+                await message.answer(
+                    text=response.text,
+                    parse_mode=getattr(response, 'parse_mode', 'HTML'),
+                    reply_markup=getattr(response, 'reply_markup', None),
+                    disable_notification=getattr(response, 'disable_notification', False)
+                )
 
-        return response
+            return response
+
+        # If we reach here, coordinator is available but something went wrong
+        logger.error("MenuSystemCoordinator available but failed to handle command")
+        return {"success": False, "error": "Command processing failed"}
 
     async def route_callback(self, callback_query: CallbackQuery) -> Any:
         """

@@ -4,7 +4,7 @@ Tests for the command handlers.
 
 import pytest
 from unittest.mock import Mock
-from src.handlers.commands import CommandHandler
+from src.handlers.telegram_commands import CommandHandler
 from src.core.models import CommandResponse
 
 
