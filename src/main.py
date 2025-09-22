@@ -51,6 +51,14 @@ async def shutdown_bot(signum=None, frame=None):
     if signum and logger:
         logger.info("Received signal %s, shutting down...", signum)
     
+    # Stop the bot application first to prevent new tasks from being created
+    if bot_app and bot_app.is_running:
+        if logger:
+            logger.info("Stopping bot application...")
+        success = await bot_app.stop()
+        if not success:
+            logger.warning("Bot application stop returned False")
+    
     # Cancel all background tasks
     if background_tasks:
         logger.info("Cancelling %d background tasks...", len(background_tasks))
@@ -79,14 +87,6 @@ async def shutdown_bot(signum=None, frame=None):
         await backup_automation.stop_scheduled_backups()
         logger.info("Backup automation stopped")
     
-    # Stop the bot application
-    if bot_app and bot_app.is_running:
-        if logger:
-            logger.info("Stopping bot application...")
-        success = await bot_app.stop()
-        if not success:
-            logger.warning("Bot application stop returned False")
-    
     # Save final module registry state
     if module_registry:
         # Update all modules to STOPPED state
@@ -96,8 +96,8 @@ async def shutdown_bot(signum=None, frame=None):
     
     if logger:
         logger.info("Bot application stopped")
-    # Instead of sys.exit(0), we'll use a more graceful approach
-    # The main loop will detect that the bot is no longer running and exit naturally
+    # Force exit after a short delay to ensure everything is cleaned up
+    await asyncio.sleep(0.1)
     return True
 
 
@@ -210,11 +210,6 @@ async def main():
                 logger.info("Shutdown event detected, initiating shutdown...")
                 break
                 
-            # Send heartbeats for modules (if implemented)
-            # if module_registry:
-            #     for module_info in module_registry.get_all_modules():
-            #         module_registry.heartbeat(module_info.name)
-            
             # Wait for either 1 second or shutdown event
             try:
                 await asyncio.wait_for(shutdown_event.wait(), timeout=1.0)
@@ -231,6 +226,15 @@ async def main():
     finally:
         # Perform shutdown when the loop exits
         await shutdown_bot()
+        # Cancel all remaining tasks to ensure clean exit
+        tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        for task in tasks:
+            task.cancel()
+        # Wait for tasks to be cancelled
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        # Ensure the application exits
+        return
 
 
 if __name__ == "__main__":
