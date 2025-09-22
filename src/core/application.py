@@ -3,6 +3,7 @@ Bot application for the Telegram bot framework.
 """
 
 import asyncio
+from datetime import datetime
 from typing import Any, Optional, Dict, Callable
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
