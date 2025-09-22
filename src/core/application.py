@@ -180,10 +180,14 @@ class BotApplication:
             self._is_running = False
             
             # Stop dispatcher polling if it's running
-            if self.dispatcher and hasattr(self.dispatcher, '_polling') and self.dispatcher._polling:
+            if self.dispatcher:
                 try:
-                    await self.dispatcher.stop_polling()
-                    logger.info("Dispatcher polling stopped")
+                    # Check if polling is active
+                    if hasattr(self.dispatcher, '_polling') and self.dispatcher._polling:
+                        await self.dispatcher.stop_polling()
+                        logger.info("Dispatcher polling stopped")
+                    else:
+                        logger.info("Dispatcher polling was not active")
                 except Exception as e:
                     logger.warning(f"Error stopping dispatcher polling: {e}")
             

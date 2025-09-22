@@ -183,6 +183,10 @@ async def main():
             logger.info("Received signal %s, scheduling shutdown...", signum)
         # Schedule the shutdown coroutine in the event loop
         loop.call_soon_threadsafe(shutdown_event.set)
+        # Also cancel the main task to ensure exit
+        for task in asyncio.all_tasks():
+            if task is not asyncio.current_task():
+                task.cancel()
     
     # Register signal handlers
     signal.signal(signal.SIGTERM, signal_handler)
@@ -204,18 +208,16 @@ async def main():
     
     # Keep the application running
     try:
-        while bot_app.is_running:
-            # Check if shutdown was requested
-            if shutdown_event.is_set():
-                logger.info("Shutdown event detected, initiating shutdown...")
-                break
-                
+        while bot_app.is_running and not shutdown_event.is_set():
             # Wait for either 1 second or shutdown event
             try:
                 await asyncio.wait_for(shutdown_event.wait(), timeout=1.0)
             except asyncio.TimeoutError:
                 # Normal case - continue the loop
                 pass
+            except asyncio.CancelledError:
+                logger.info("Main loop was cancelled")
+                break
                 
     except asyncio.CancelledError:
         if logger:
@@ -226,13 +228,6 @@ async def main():
     finally:
         # Perform shutdown when the loop exits
         await shutdown_bot()
-        # Cancel all remaining tasks to ensure clean exit
-        tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
-        for task in tasks:
-            task.cancel()
-        # Wait for tasks to be cancelled
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
         # Ensure the application exits
         return
 
