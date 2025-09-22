@@ -81,7 +81,7 @@ class MenuHandlerSystem(BaseHandler):
 
         try:
             telegram_user = message.from_user.model_dump()
-            user_context = await self.user_service.get_or_create_user_context(user_id, telegram_user)
+            user_context = await self.user_service.get_enhanced_user_menu_context(user_id)
         except Exception as e:
             logger.error(f"Error getting user context for {user_id}: {e}", exc_info=True)
             sent_msg = await self.message_manager.bot.send_message(chat_id, "Error retrieving your profile.")
@@ -91,7 +91,14 @@ class MenuHandlerSystem(BaseHandler):
         # Track evaluation before generating menu
         await self._track_lucien_evaluation(user_id, command, {"message": message.model_dump_json(), "user_context": user_context})
 
-        menu = await self.get_menu_for_context(user_context, MenuType.MAIN)
+        # Determine menu type based on command
+        menu_id = "main_menu"  # Default to main menu
+        if command:
+            # Remove the slash and get the menu ID from configuration
+            clean_command = command.lstrip('/')
+            menu_id = menu_system_config.get_routing_rule(clean_command)
+
+        menu = await self.get_menu_for_context(user_context, menu_id)
         if not menu:
             sent_msg = await self.message_manager.bot.send_message(chat_id, "Could not generate a menu.")
             await self.message_manager.track_message(sent_msg.chat.id, sent_msg.message_id, 'error_message')
@@ -138,7 +145,7 @@ class MenuHandlerSystem(BaseHandler):
         await query.answer()
 
         try:
-            user_context = await self.user_service.get_user_context(user_id)
+            user_context = await self.user_service.get_enhanced_user_menu_context(user_id)
         except Exception as e:
             logger.error(f"Error getting user context for {user_id}: {e}", exc_info=True)
             await self.message_manager.bot.send_message(chat_id, "Error retrieving your profile.")
@@ -146,6 +153,11 @@ class MenuHandlerSystem(BaseHandler):
 
         # Track evaluation before generating menu
         await self._track_lucien_evaluation(user_id, query.data, {"callback_query": query.model_dump_json(), "user_context": user_context})
+
+        # Handle worthiness explanation requests
+        if query.data.startswith("explain_divan_worthiness") or query.data.startswith("worthiness_explanation"):
+            await self._handle_worthiness_explanation(query, user_context)
+            return
 
         if query.data.startswith("menu:"):
             menu_id = query.data.split(":", 1)[1]
@@ -192,7 +204,7 @@ class MenuHandlerSystem(BaseHandler):
         except Exception as e:
             logger.error(f"Error during message cleanup in chat {chat_id}: {e}", exc_info=True)
 
-    async def get_menu_for_context(self, user_context: Dict[str, Any], menu_identifier: Any) -> Optional[Menu]:
+    async def get_menu_for_context(self, user_context: Dict[str, Any], menu_identifier: Any = MenuType.MAIN) -> Optional[Menu]:
         """Generates a menu using the menu factory."""
         try:
             return await self.menu_factory.create_menu(menu_identifier, user_context)
@@ -259,6 +271,48 @@ class MenuHandlerSystem(BaseHandler):
         else:
             # For non-command messages, you could implement other logic
             pass
+
+    async def _handle_worthiness_explanation(self, query: CallbackQuery, user_context: Dict[str, Any]) -> None:
+        """Handle worthiness explanation requests."""
+        try:
+            # Generate detailed worthiness explanation
+            worthiness_explanation = await self.user_service.generate_worthiness_explanation(
+                user_context.get("user_id"), 
+                query.data
+            )
+            
+            # Format the explanation as a message
+            explanation_text = (
+                f"<b>✨ Evaluación de Worthiness ✨</b>\n\n"
+                f"<b>Puntaje Actual:</b> {worthiness_explanation['current_score']:.2f}\n"
+                f"<b>Evaluación:</b> {worthiness_explanation['description_text']}\n\n"
+                f"<b>Áreas de Mejora:</b>\n"
+            )
+            
+            for area in worthiness_explanation['improvement_areas']:
+                explanation_text += f"• {area.replace('_', ' ').title()}\n"
+            
+            explanation_text += "\n<b>Próximos Hitos:</b>\n"
+            for milestone in worthiness_explanation['next_milestones']:
+                explanation_text += f"• {milestone.replace('_', ' ').title()}\n"
+            
+            explanation_text += "\n<b>Orientación Personalizada:</b>\n"
+            for guidance in worthiness_explanation['personalized_guidance']:
+                explanation_text += f"• {guidance}\n"
+            
+            # Send the explanation as a new message
+            await self.message_manager.bot.send_message(
+                query.message.chat.id,
+                explanation_text,
+                parse_mode="HTML"
+            )
+            
+            # Answer the callback query
+            await query.answer("Evaluación de worthiness generada")
+
+        except Exception as e:
+            logger.error(f"Error handling worthiness explanation: {e}")
+            await query.answer("Error generando la explicación", show_alert=True)
 
     async def _track_lucien_evaluation(self, user_id: str, user_action: str, 
                                      context: Dict[str, Any]) -> None:

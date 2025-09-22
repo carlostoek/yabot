@@ -1,11 +1,3 @@
-"""
-Menu System Coordinator for YABOT.
-
-Central coordination system that integrates MenuHandlerSystem, CallbackProcessor,
-and ActionDispatcher to provide unified menu handling as per REQ-MENU-001.1 and
-REQ-MENU-002.1.
-"""
-
 import asyncio
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -16,7 +8,6 @@ from aiogram.types import Message, CallbackQuery
 from src.handlers.base import BaseHandler
 from src.handlers.menu_handler import MenuHandlerSystem
 from src.handlers.callback_processor import CallbackProcessor
-from src.handlers.action_dispatcher import ActionDispatcher
 from src.ui.menu_factory import MenuFactory
 from src.ui.message_manager import MessageManager
 from src.ui.telegram_menu_renderer import TelegramMenuRenderer
@@ -25,6 +16,9 @@ from src.events.bus import EventBus
 from src.shared.monitoring.menu_performance import MenuPerformanceMonitor, MenuOperationType
 from src.shared.resilience.circuit_breaker import CircuitBreaker
 from src.utils.logger import get_logger
+
+# Import centralized menu configuration
+from src.ui.menu_config import menu_system_config
 
 logger = get_logger(__name__)
 
@@ -118,10 +112,14 @@ class MenuSystemCoordinator:
             Response data including menu and tracking info.
         """
         try:
-            user_context = await self.user_service.get_user_context(message.from_user.id)
+            user_context = await self.user_service.get_enhanced_user_menu_context(str(message.from_user.id))
 
-            # Generate menu
-            menu = await self.menu_handler.get_menu_for_context(user_context)
+            # Determine menu type based on command or default to main
+            command = message.text.strip() if message.text else "/menu"
+            menu_id = menu_system_config.get_routing_rule(command.lstrip('/'))
+            
+            # Generate menu using centralized configuration
+            menu = await self.menu_factory.create_menu(menu_id, user_context)
             if not menu:
                 return {"success": False, "error": "Failed to generate menu"}
 
@@ -169,19 +167,21 @@ class MenuSystemCoordinator:
             Response data including action result and tracking info.
         """
         try:
-            user_context = await self.user_service.get_user_context(callback_query.from_user.id)
+            user_context = await self.user_service.get_enhanced_user_menu_context(str(callback_query.from_user.id))
 
             # Process callback
             action_result = await self.callback_processor.process_callback(
-                callback_query.data, user_context
+                callback_query.data, user_context, callback_query.message.chat.id
             )
 
             if not action_result.success:
                 await callback_query.answer("Error processing request", show_alert=True)
                 return {"success": False, "error": action_result.response_message}
 
-            # Dispatch action if needed
-            if action_result.new_menu:
+            # Handle worthiness explanations specially
+            if callback_query.data.startswith("explain_divan_worthiness") or callback_query.data.startswith("worthiness_explanation"):
+                await self._handle_worthiness_explanation(callback_query, user_context)
+            elif action_result.new_menu:
                 await self._handle_menu_update(callback_query, action_result, user_context)
             else:
                 await self._handle_action_dispatch(callback_query, action_result, user_context)
@@ -256,6 +256,49 @@ class MenuSystemCoordinator:
 
         except Exception as e:
             logger.error(f"Error dispatching action: {e}")
+
+    async def _handle_worthiness_explanation(self, callback_query: CallbackQuery, 
+                                           user_context: Dict[str, Any]) -> None:
+        """Handle worthiness explanation requests."""
+        try:
+            # Generate detailed worthiness explanation
+            worthiness_explanation = await self.user_service.generate_worthiness_explanation(
+                user_context.get("user_id"), 
+                callback_query.data
+            )
+            
+            # Format the explanation as a message
+            explanation_text = (
+                f"<b>✨ Evaluación de Worthiness ✨</b>\n\n"
+                f"<b>Puntaje Actual:</b> {worthiness_explanation['current_score']:.2f}\n"
+                f"<b>Evaluación:</b> {worthiness_explanation['description_text']}\n\n"
+                f"<b>Áreas de Mejora:</b>\n"
+            )
+            
+            for area in worthiness_explanation['improvement_areas']:
+                explanation_text += f"• {area.replace('_', ' ').title()}\n"
+            
+            explanation_text += "\n<b>Próximos Hitos:</b>\n"
+            for milestone in worthiness_explanation['next_milestones']:
+                explanation_text += f"• {milestone.replace('_', ' ').title()}\n"
+            
+            explanation_text += "\n<b>Orientación Personalizada:</b>\n"
+            for guidance in worthiness_explanation['personalized_guidance']:
+                explanation_text += f"• {guidance}\n"
+            
+            # Send the explanation as a new message
+            await self.bot.send_message(
+                callback_query.message.chat.id,
+                explanation_text,
+                parse_mode="HTML"
+            )
+            
+            # Answer the callback query
+            await callback_query.answer("Evaluación de worthiness generada")
+
+        except Exception as e:
+            logger.error(f"Error handling worthiness explanation: {e}")
+            await callback_query.answer("Error generando la explicación", show_alert=True)
 
     async def _publish_menu_interaction_event(self, user_context: Dict[str, Any],
                                             menu_id: str, interaction_type: str) -> None:

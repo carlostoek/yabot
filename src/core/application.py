@@ -317,6 +317,8 @@ class BotApplication:
                 coordinator_success = await self.menu_system_coordinator.initialize()
                 if not coordinator_success:
                     logger.error("Failed to initialize menu system coordinator")
+                else:
+                    logger.info("Menu system coordinator initialized successfully")
             except Exception as e:
                 logger.error("Exception during menu system coordinator initialization", exc_info=True)
         else:
@@ -949,6 +951,24 @@ class BotApplication:
             }
         else:
             health_info["components"]["event_bus"] = {"status": "unavailable"}
+
+        # Menu system health
+        if self.menu_system_coordinator:
+            try:
+                menu_health = await self.menu_system_coordinator.get_system_health()
+                health_info["components"]["menu_system"] = {
+                    "status": "healthy" if menu_health.get("overall_health_score", 0) > 80 else "degraded",
+                    "health_score": menu_health.get("overall_health_score", 0),
+                    "performance_metrics": menu_health.get("performance", {}),
+                    "message_management": menu_health.get("message_management", {})
+                }
+            except Exception as e:
+                health_info["components"]["menu_system"] = {
+                    "status": "degraded",
+                    "error": str(e)
+                }
+        else:
+            health_info["components"]["menu_system"] = {"status": "unavailable"}
 
         # Determine overall status
         component_statuses = [comp["status"] for comp in health_info["components"].values()]

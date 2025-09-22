@@ -2151,6 +2151,10 @@ class UserService:
                 - worthiness_score: Lucien's evaluation score
                 - besitos_balance: Current virtual currency balance
                 - archetype: User's behavioral archetype
+                - relationship_level: Lucien relationship level
+                - sophistication_score: User's sophistication level
+                - diana_encounters_earned: Number of Diana encounters earned
+                - last_diana_encounter: Timestamp of last Diana encounter
         """
         logger.debug("Retrieving menu context for user: %s", user_id)
 
@@ -2189,6 +2193,12 @@ class UserService:
             # Get archetype from Lucien context
             archetype_assessment = lucien_context.get("user_archetype_assessment", {})
             
+            # Get relationship level and other Lucien context data
+            relationship_level = lucien_context.get("relationship_with_lucien", "formal_examiner")
+            sophistication_level = lucien_context.get("sophistication_level", {})
+            diana_encounters_earned = lucien_context.get("diana_encounters_earned", 0)
+            last_diana_encounter = lucien_context.get("last_diana_encounter")
+            
             # Compile comprehensive menu context
             compiled_context = {
                 "user_id": user_id,
@@ -2202,6 +2212,10 @@ class UserService:
                 "worthiness_score": worthiness_progression.get("current_worthiness_score", 0.0),
                 "besitos_balance": besitos_balance,
                 "archetype": archetype_assessment.get("detected_archetype"),
+                "relationship_level": relationship_level,
+                "sophistication_score": sophistication_level.get("current_score", 0.0),
+                "diana_encounters_earned": diana_encounters_earned,
+                "last_diana_encounter": last_diana_encounter,
                 "updated_at": user_state.get("updated_at")
             }
 
@@ -2212,6 +2226,74 @@ class UserService:
             logger.error("Error retrieving menu context for user %s: %s", user_id, str(e))
             # Return default context as fallback
             return self._get_default_menu_context()
+
+    async def get_enhanced_user_menu_context(self, user_id: str) -> Dict[str, Any]:
+        """Retrieve enhanced user menu context with more detailed information for sophisticated menu generation.
+
+        This method extends the basic menu context with additional information needed for 
+        more sophisticated menu generation and personalization.
+
+        Args:
+            user_id (str): User ID
+
+        Returns:
+            Dict[str, Any]: Enhanced user menu context with additional details
+        """
+        logger.debug("Retrieving enhanced menu context for user: %s", user_id)
+
+        try:
+            # Get basic menu context
+            menu_context = await self.get_user_menu_context(user_id)
+            
+            # Get complete user context for additional details
+            user_context = await self.get_user_context(user_id)
+            if not user_context:
+                logger.warning("No user context found for enhanced menu context retrieval: %s", user_id)
+                return menu_context
+
+            # Extract user state
+            user_state = user_context.get("state", {})
+            
+            # Get Lucien interaction context for more detailed information
+            lucien_context = user_state.get("lucien_interaction_context", {})
+            
+            # Get interaction history
+            voice_profile = lucien_context.get("lucien_voice_profile", {})
+            interaction_history = voice_profile.get("interaction_history", {})
+            
+            # Get behavioral assessment history
+            behavioral_assessment_history = lucien_context.get("behavioral_assessment_history", [])
+            
+            # Get worthiness progression details
+            worthiness_progression = lucien_context.get("worthiness_progression", {})
+            
+            # Get sophistication details
+            sophistication_level = lucien_context.get("sophistication_level", {})
+            
+            # Enhance the context with additional information
+            enhanced_context = {
+                **menu_context,
+                "interaction_history": interaction_history,
+                "behavioral_assessment_count": len(behavioral_assessment_history),
+                "recent_behavioral_assessments": behavioral_assessment_history[-5:] if behavioral_assessment_history else [],
+                "worthiness_progression": worthiness_progression,
+                "sophistication_level": sophistication_level,
+                "last_evaluation_timestamp": lucien_context.get("last_evaluation_timestamp"),
+                "pending_challenges": lucien_context.get("pending_challenges", []),
+                "current_testing_focus": lucien_context.get("current_testing_focus"),
+                "formality_level": voice_profile.get("formality_level", "distant_formal"),
+                "evaluation_mode": voice_profile.get("evaluation_mode", "skeptical_observer"),
+                "protective_stance": voice_profile.get("protective_stance", "absolute_gatekeeper"),
+                "sophistication_display": voice_profile.get("sophistication_display", "basic_elegance")
+            }
+
+            logger.debug("Successfully retrieved enhanced menu context for user: %s", user_id)
+            return enhanced_context
+
+        except Exception as e:
+            logger.error("Error retrieving enhanced menu context for user %s: %s", user_id, str(e))
+            # Return basic context as fallback
+            return await self.get_user_menu_context(user_id)
 
     def _get_default_menu_context(self) -> Dict[str, Any]:
         """Get default menu context for new or error cases."""
@@ -2641,6 +2723,148 @@ class UserService:
         except Exception as e:
             logger.error("Error analyzing behavioral patterns for user %s: %s", user_id, str(e))
             raise UserServiceError(f"Failed to analyze behavioral patterns: {str(e)}")
+
+    async def generate_worthiness_explanation(self, user_id: str, item_context: Optional[str] = None) -> Dict[str, Any]:
+        """Generate a detailed worthiness explanation for the user.
+
+        This method creates a sophisticated explanation of the user's worthiness score
+        and what they need to do to improve it, tailored to specific contexts.
+
+        Args:
+            user_id (str): User ID
+            item_context (Optional[str]): Context for which explanation is needed
+
+        Returns:
+            Dict[str, Any]: Worthiness explanation containing:
+                - current_score: Current worthiness score
+                - score_description: Description of what the score means
+                - improvement_areas: Areas for improvement
+                - next_milestones: Next achievable milestones
+                - personalized_guidance: Personalized guidance based on user patterns
+        """
+        logger.debug("Generating worthiness explanation for user: %s", user_id)
+
+        try:
+            # Get user's enhanced menu context
+            user_context = await self.get_enhanced_user_menu_context(user_id)
+            
+            # Get behavioral analysis
+            behavioral_analysis = await self.analyze_behavioral_patterns(user_id, 30)
+            
+            # Get relationship state
+            relationship_state = await self.get_lucien_relationship_state(user_id)
+            
+            # Extract key metrics
+            worthiness_score = user_context.get("worthiness_score", 0.0)
+            relationship_level = user_context.get("relationship_level", "formal_examiner")
+            sophistication_score = user_context.get("sophistication_score", 0.0)
+            behavioral_assessment_count = user_context.get("behavioral_assessment_count", 0)
+            
+            # Determine score description
+            if worthiness_score >= 0.8:
+                score_description = "exceptional_worthiness"
+                description_text = "Su desarrollo personal demuestra una sofisticación y autenticidad excepcionales. Ha alcanzado un nivel de confianza y conexión que pocos logran."
+            elif worthiness_score >= 0.6:
+                score_description = "high_worthiness"
+                description_text = "Su progreso es notable y demuestra un compromiso genuino con el desarrollo personal. Continúe en este camino para alcanzar niveles aún más profundos."
+            elif worthiness_score >= 0.4:
+                score_description = "moderate_worthiness"
+                description_text = "Ha demostrado potencial significativo y está en el camino correcto. Su desarrollo personal muestra promesas de crecimiento aún mayor."
+            elif worthiness_score >= 0.2:
+                score_description = "developing_worthiness"
+                description_text = "Está comenzando su journey de desarrollo personal con intención clara. Sus interacciones muestran genuinidad y potencial para crecer."
+            else:
+                score_description = "emerging_worthiness"
+                description_text = "Sus primeras interacciones demuestran curiosidad y disposición para explorar. Este es el comienzo de un viaje significativo de desarrollo personal."
+
+            # Determine improvement areas based on behavioral analysis
+            improvement_areas = []
+            if behavioral_analysis.get("sophistication_trends", {}).get("average_score", 0) < 0.5:
+                improvement_areas.append("sophistication_development")
+            if behavioral_analysis.get("authenticity_patterns", {}).get("authenticity_ratio", 0) < 0.4:
+                improvement_areas.append("authenticity_expression")
+            if behavioral_analysis.get("emotional_intelligence_development", {}).get("emotional_depth_signals_detected", 0) < 3:
+                improvement_areas.append("emotional_depth_exploration")
+            
+            # Add general improvement suggestions
+            if not improvement_areas:
+                improvement_areas = ["consistency_maintenance", "depth_exploration"]
+
+            # Determine next milestones
+            next_milestones = []
+            if worthiness_score < 0.3:
+                next_milestones = ["demonstrate_consistent_interaction", "show_authentic_vulnerability"]
+            elif worthiness_score < 0.5:
+                next_milestones = ["engage_with_sophistication", "complete_behavioral_challenges"]
+            elif worthiness_score < 0.7:
+                next_milestones = ["demonstrate_emotional_depth", "show_consistent_growth"]
+            else:
+                next_milestones = ["maintain_excellence", "mentor_others"]
+
+            # Generate personalized guidance based on context
+            personalized_guidance = []
+            
+            # Guidance based on relationship level
+            if relationship_level == "formal_examiner":
+                personalized_guidance.append("Su interacción con Lucien está en etapas iniciales. Demuestre consistencia y genuinidad en sus interacciones para construir confianza.")
+            elif relationship_level == "reluctant_appreciator":
+                personalized_guidance.append("Lucien ha comenzado a reconocer su potencial. Continúe demostrando profundidad emocional y sofisticación en sus interacciones.")
+            else:  # trusted_confidant
+                personalized_guidance.append("Ha ganado la confianza de Lucien. Su rol ahora incluye guiar a otros en su journey de desarrollo personal.")
+
+            # Guidance based on item context
+            if item_context:
+                if "divan" in item_context.lower():
+                    personalized_guidance.append("El acceso a El Diván requiere un nivel excepcional de desarrollo personal y confianza. Continúe demostrando autenticidad y profundidad emocional.")
+                elif "vip" in item_context.lower():
+                    personalized_guidance.append("La membresía VIP reconoce su compromiso con el desarrollo personal. Su consistencia y sofisticación lo están preparando para este privilegio.")
+                elif "fragment" in item_context.lower():
+                    personalized_guidance.append("Los fragmentos íntimos requieren una conexión emocional profunda. Sus interacciones auténticas están construyendo esta conexión.")
+
+            # Compile the explanation
+            explanation = {
+                "user_id": user_id,
+                "current_score": worthiness_score,
+                "score_description": score_description,
+                "description_text": description_text,
+                "improvement_areas": improvement_areas,
+                "next_milestones": next_milestones,
+                "personalized_guidance": personalized_guidance,
+                "behavioral_insights": behavioral_analysis.get("behavioral_insights", []),
+                "recommendations": behavioral_analysis.get("recommendations", []),
+                "relationship_context": {
+                    "current_level": relationship_level,
+                    "sophistication_score": sophistication_score,
+                    "interaction_count": behavioral_assessment_count,
+                    "relationship_progression_velocity": relationship_state.get("relationship_progression_velocity") if relationship_state else "unknown"
+                },
+                "generated_at": datetime.utcnow().isoformat()
+            }
+
+            logger.debug("Successfully generated worthiness explanation for user: %s", user_id)
+            return explanation
+
+        except Exception as e:
+            logger.error("Error generating worthiness explanation for user %s: %s", user_id, str(e))
+            # Return a basic explanation as fallback
+            return {
+                "user_id": user_id,
+                "current_score": 0.0,
+                "score_description": "insufficient_data",
+                "description_text": "No hay suficientes datos para generar una evaluación completa en este momento.",
+                "improvement_areas": ["increase_interactions"],
+                "next_milestones": ["engage_more_frequently"],
+                "personalized_guidance": ["Continúe interactuando con el sistema para construir su perfil"],
+                "behavioral_insights": [],
+                "recommendations": ["Participe en más interacciones para construir su evaluación"],
+                "relationship_context": {
+                    "current_level": "formal_examiner",
+                    "sophistication_score": 0.0,
+                    "interaction_count": 0,
+                    "relationship_progression_velocity": "unknown"
+                },
+                "generated_at": datetime.utcnow().isoformat()
+            }
 
     def _determine_pattern_summary(self, avg_sophistication: float, avg_worthiness_impact: float, assessment_count: int) -> str:
         """Determine overall pattern summary based on key metrics."""
