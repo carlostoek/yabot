@@ -3,6 +3,7 @@ Bot application for the Telegram bot framework.
 """
 
 import asyncio
+from datetime import datetime
 from typing import Any, Optional, Dict, Callable
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -17,10 +18,12 @@ from src.handlers.commands import CommandHandler
 from src.handlers.telegram_commands import CommandHandler as TelegramCommandHandler
 from src.handlers.webhook import WebhookHandler
 from src.handlers.menu_router import MenuIntegrationRouter
+from src.handlers.menu_system import MenuSystemCoordinator
 from src.utils.logger import get_logger, configure_logging
 from src.database.manager import DatabaseManager
 from src.events.bus import EventBus
 from src.services.user import UserService
+from src.utils.cache_manager import CacheManager
 from src.api.server import APIServer  # Added for API server initialization
 from src.shared.registry.module_registry import ModuleRegistry, ModuleState, ModuleHealthStatus
 
@@ -45,6 +48,7 @@ class BotApplication:
         self.event_bus: Optional[EventBus] = None
         self.user_service: Optional[UserService] = None
         self.module_registry: Optional[ModuleRegistry] = None
+        self.cache_manager: Optional[CacheManager] = None
         
         # Initialize API server (will be set up during start)
         self.api_server: Optional[APIServer] = None
@@ -54,6 +58,7 @@ class BotApplication:
         self.telegram_command_handler = TelegramCommandHandler()
         self.webhook_handler = WebhookHandler()
         self.menu_router: Optional[MenuIntegrationRouter] = None
+        self.menu_system_coordinator: Optional[MenuSystemCoordinator] = None
         
         # Initialize Telegram bot components
         self.bot: Optional[Bot] = None
@@ -94,18 +99,33 @@ class BotApplication:
             # Set up database and event components
             await self._setup_database()
             await self._setup_event_bus()
-            
+
+            # Set up cache manager
+            await self._setup_cache_manager()
+
             # Set up module registry after event bus is initialized
             await self._setup_module_registry()
-            
+
             # Register core services with the module registry
             await self._register_core_services()
-            
+
             # Set up user service after database and event bus
             await self._setup_user_service()
             
-            # Set up menu router
+            # Set up menu router and system coordinator
             await self._setup_menu_router()
+
+            # Verify menu system initialization
+            if self.menu_system_coordinator:
+                health = await self.menu_system_coordinator.get_system_health()
+                health_score = health.get('overall_health_score', 0)
+                logger.info(f"Menu system initialized with health score: {health_score:.1f}/100")
+
+                if health_score < 80:
+                    logger.warning("Menu system health score below optimal threshold")
+                    await self._log_component_health_issues()
+            else:
+                logger.warning("Menu system coordinator not initialized")
             
             # Initialize emotional intelligence system
             emotional_success = await self.initialize_emotional_intelligence()
@@ -120,9 +140,6 @@ class BotApplication:
             
             # Set up webhook handler with event bus context
             self._setup_webhook_handler()
-            
-            # Register Telegram command handlers
-            self._register_telegram_handlers()
             
             # Configure update receiving mode (webhook or polling)
             if self._should_use_webhook():
@@ -159,24 +176,65 @@ class BotApplication:
         logger.info("Stopping bot application")
         
         try:
-            # Stop polling if it's running
-            if hasattr(self, '_polling_task') and self._polling_task:
+            # Mark as not running first to prevent processing new updates
+            self._is_running = False
+            
+            # Stop dispatcher polling if it's running
+            if self.dispatcher:
+                try:
+                    # Check if polling is active
+                    if hasattr(self.dispatcher, '_polling') and self.dispatcher._polling:
+                        await self.dispatcher.stop_polling()
+                        logger.info("Dispatcher polling stopped")
+                    else:
+                        logger.info("Dispatcher polling was not active")
+                except Exception as e:
+                    logger.warning(f"Error stopping dispatcher polling: {e}")
+            
+            # Stop polling task if it's running
+            if hasattr(self, '_polling_task') and self._polling_task and not self._polling_task.done():
                 self._polling_task.cancel()
                 try:
-                    await self._polling_task
+                    await asyncio.wait_for(self._polling_task, timeout=5.0)
+                    logger.info("Polling task stopped")
                 except asyncio.CancelledError:
-                    pass
-            
-            # Stop dispatcher polling
-            if self.dispatcher:
-                await self.dispatcher.stop_polling()
+                    logger.info("Polling task cancelled successfully")
+                except asyncio.TimeoutError:
+                    logger.warning("Polling task did not stop within timeout")
+                except Exception as e:
+                    logger.warning(f"Error waiting for polling task: {e}")
             
             # Close bot session
             if self.bot:
-                await self.bot.session.close()
+                try:
+                    await self.bot.session.close()
+                    logger.info("Bot session closed")
+                except Exception as e:
+                    logger.warning(f"Error closing bot session: {e}")
             
-            # Perform cleanup operations
-            self._is_running = False
+            # Stop database connections if they exist
+            if self.database_manager:
+                try:
+                    await self.database_manager.close_all()
+                    logger.info("Database connections closed")
+                except Exception as e:
+                    logger.warning(f"Error closing database connections: {e}")
+            
+            # Stop event bus if it exists
+            if self.event_bus:
+                try:
+                    await self.event_bus.close()
+                    logger.info("Event bus closed")
+                except Exception as e:
+                    logger.warning(f"Error closing event bus: {e}")
+            
+            # Stop cache manager if it exists
+            if self.cache_manager:
+                try:
+                    await self.cache_manager.close()
+                    logger.info("Cache manager closed")
+                except Exception as e:
+                    logger.warning(f"Error closing cache manager: {e}")
             
             logger.info("Bot application stopped successfully")
             return True
@@ -188,6 +246,8 @@ class BotApplication:
             }
             user_message = await self.error_handler.handle_error(e, error_context)
             logger.error("Error during bot shutdown: %s", user_message)
+            # Ensure the app is marked as not running
+            self._is_running = False
             return False
     
     def configure_webhook(self, url: str) -> bool:
@@ -242,17 +302,40 @@ class BotApplication:
         return True
     
     async def _setup_menu_router(self) -> None:
-        """Initialize the menu router."""
-        logger.info("Setting up menu router")
-        if self.user_service and self.event_bus and self.database_manager:
-            self.menu_router = MenuIntegrationRouter(
-                user_service=self.user_service,
+        """Initialize the menu router and menu system coordinator."""
+        logger.info("Setting up menu router and menu system coordinator")
+        # Initialize menu system coordinator if all required services are available
+        if self.user_service and self.event_bus and self.database_manager and self.bot:
+            self.menu_system_coordinator = MenuSystemCoordinator(
+                bot=self.bot,
                 event_bus=self.event_bus,
-                database_manager=self.database_manager
+                user_service=self.user_service
             )
-            logger.info("Menu router set up successfully")
+
+            # Initialize the coordinator
+            try:
+                coordinator_success = await self.menu_system_coordinator.initialize()
+                if not coordinator_success:
+                    logger.error("Failed to initialize menu system coordinator")
+                else:
+                    logger.info("Menu system coordinator initialized successfully")
+            except Exception as e:
+                logger.error("Exception during menu system coordinator initialization", exc_info=True)
         else:
-            logger.error("Cannot set up menu router due to missing services.")
+            logger.warning("Some services missing for menu system coordinator, continuing without it")
+            self.menu_system_coordinator = None
+
+        # Initialize menu router with available services
+        self.menu_router = MenuIntegrationRouter(
+            user_service=self.user_service,
+            event_bus=self.event_bus,
+            database_manager=self.database_manager,
+            menu_coordinator=self.menu_system_coordinator
+        )
+        logger.info("Menu router set up successfully")
+
+        # Now register the Telegram handlers with the dispatcher
+        self._register_telegram_handlers()
 
     def _setup_command_handlers(self) -> None:
         """Set up the command handlers with the router."""
@@ -272,17 +355,26 @@ class BotApplication:
             self.command_handler = CommandHandler()
             self.telegram_command_handler = TelegramCommandHandler()
         
-        # Register command handlers
-        self.router.register_command_handler("start", self.command_handler.handle_start)
-        self.router.register_command_handler("menu", self.command_handler.handle_menu)
-        self.router.register_command_handler("help", self.command_handler.handle_help)
-        self.router.set_default_handler(self.command_handler.handle_unknown)
+        # Register command handlers with the menu router if available, otherwise with main router
+        router_to_use = self.menu_router if self.menu_router else self.router
+        
+        # Debug logging to see which router we're using
+        logger.debug("Registering command handlers with router: %s", type(router_to_use).__name__)
+        
+        router_to_use.register_command_handler("start", self.command_handler.handle_start)
+        router_to_use.register_command_handler("menu", self.command_handler.handle_menu)
+        router_to_use.register_command_handler("help", self.command_handler.handle_help)
+        router_to_use.set_default_handler(self.command_handler.handle_unknown)
+        
+        # Debug logging to verify handlers are registered
+        logger.debug("Command handlers registered. Available commands: %s", 
+                   list(router_to_use._command_handlers.keys()) if hasattr(router_to_use, '_command_handlers') else "Unknown")
         
         logger.debug("Command handlers set up successfully")
     
     def _register_telegram_handlers(self) -> None:
         """Register Telegram handlers with the dispatcher, using the new MenuIntegrationRouter."""
-        logger.debug("Registering Telegram handlers via MenuIntegrationRouter")
+        logger.info("Registering Telegram handlers via MenuIntegrationRouter")
 
         if not self.dispatcher or not self.menu_router:
             logger.error("Dispatcher or Menu Router not initialized, cannot register handlers.")
@@ -292,7 +384,11 @@ class BotApplication:
         self.dispatcher.message.register(self.menu_router.route_message)
         self.dispatcher.callback_query.register(self.menu_router.route_callback)
 
-        logger.debug("Menu router registered with dispatcher to handle all messages and callbacks.")
+        logger.info("Menu router registered with dispatcher to handle all messages and callbacks.")
+
+        # Enhanced registration for menu system coordinator
+        if self.menu_system_coordinator:
+            logger.info("Enhanced menu system integration active")
     
     def _should_use_webhook(self) -> bool:
         """Determine if webhook mode should be used.
@@ -397,7 +493,40 @@ class BotApplication:
             user_message = await self.error_handler.handle_error(e, error_context)
             logger.error("Error setting up event bus: %s", user_message)
             return False
-    
+
+    async def _setup_cache_manager(self) -> bool:
+        """Initialize cache manager for caching operations.
+
+        Returns:
+            bool: True if cache manager setup was successful, False otherwise
+        """
+        logger.info("Setting up cache manager")
+
+        try:
+            # Initialize cache manager
+            self.cache_manager = CacheManager(self.config_manager)
+
+            # Attempt to connect to Redis
+            success = await self.cache_manager.connect()
+
+            if not success:
+                logger.warning("Failed to connect to Redis, cache will operate in memory mode")
+
+            logger.info("Cache manager set up successfully")
+            return True
+
+        except Exception as e:
+            error_context = {
+                "operation": "setup_cache_manager",
+                "component": "BotApplication"
+            }
+            user_message = await self.error_handler.handle_error(e, error_context)
+            logger.error("Error setting up cache manager: %s", user_message)
+            # Don't fail startup, continue without cache
+            self.cache_manager = CacheManager(self.config_manager)
+            logger.warning("Continuing with basic cache manager")
+            return True
+
     async def _setup_module_registry(self) -> bool:
         """Initialize module registry for dependency management.
         
@@ -548,9 +677,9 @@ class BotApplication:
         logger.info("Setting up user service")
         
         try:
-            # Initialize user service with database manager and event bus
+            # Initialize user service with database manager, event bus, and cache manager
             # Even if database_manager is None, we can create a service that handles the absence
-            self.user_service = UserService(self.database_manager, self.event_bus)
+            self.user_service = UserService(self.database_manager, self.event_bus, self.cache_manager)
             logger.info("User service set up successfully")
             return True
                 
@@ -743,3 +872,109 @@ class BotApplication:
         except Exception as e:
             logger.error(f"Failed to initialize emotional intelligence: {e}")
             return False
+
+    async def _log_component_health_issues(self) -> None:
+        """Log detailed health issues for troubleshooting."""
+        logger.info("=== Component Health Status ===")
+
+        # Check database connectivity
+        if self.database_manager:
+            mongo_connected = hasattr(self.database_manager, '_mongo_client') and self.database_manager._mongo_client is not None
+            sqlite_connected = hasattr(self.database_manager, '_sqlite_conn') and self.database_manager._sqlite_conn is not None
+            logger.info(f"Database Manager - MongoDB: {'Connected' if mongo_connected else 'Disconnected'}, SQLite: {'Connected' if sqlite_connected else 'Disconnected'}")
+        else:
+            logger.warning("Database Manager: Not initialized")
+
+        # Check cache manager connectivity
+        if self.cache_manager:
+            cache_connected = hasattr(self.cache_manager, '_is_connected') and self.cache_manager._is_connected
+            logger.info(f"Cache Manager: {'Connected to Redis' if cache_connected else 'Memory-only mode'}")
+        else:
+            logger.warning("Cache Manager: Not initialized")
+
+        # Check event bus connectivity
+        if self.event_bus:
+            event_connected = hasattr(self.event_bus, '_is_connected') and getattr(self.event_bus, '_is_connected', False)
+            logger.info(f"Event Bus: {'Connected to Redis' if event_connected else 'Local queue mode'}")
+        else:
+            logger.warning("Event Bus: Not initialized")
+
+        # Check user service status
+        if self.user_service:
+            has_cache = hasattr(self.user_service, 'cache_manager') and self.user_service.cache_manager is not None
+            logger.info(f"User Service: Initialized with {'cache manager' if has_cache else 'no cache manager'}")
+        else:
+            logger.warning("User Service: Not initialized")
+
+        logger.info("=== End Health Status ===")
+
+    async def get_system_health(self) -> Dict[str, Any]:
+        """Get comprehensive system health information.
+
+        Returns:
+            Dict containing health metrics for all components
+        """
+        health_info = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "overall_status": "healthy",
+            "components": {}
+        }
+
+        # Database health
+        if self.database_manager:
+            mongo_connected = hasattr(self.database_manager, '_mongo_client') and self.database_manager._mongo_client is not None
+            sqlite_connected = hasattr(self.database_manager, '_sqlite_conn') and self.database_manager._sqlite_conn is not None
+            health_info["components"]["database"] = {
+                "status": "healthy" if (mongo_connected or sqlite_connected) else "degraded",
+                "mongodb_connected": mongo_connected,
+                "sqlite_connected": sqlite_connected
+            }
+        else:
+            health_info["components"]["database"] = {"status": "unavailable"}
+
+        # Cache health
+        if self.cache_manager:
+            cache_connected = hasattr(self.cache_manager, '_is_connected') and self.cache_manager._is_connected
+            health_info["components"]["cache"] = {
+                "status": "healthy" if cache_connected else "degraded",
+                "redis_connected": cache_connected
+            }
+        else:
+            health_info["components"]["cache"] = {"status": "unavailable"}
+
+        # Event bus health
+        if self.event_bus:
+            event_connected = hasattr(self.event_bus, '_is_connected') and getattr(self.event_bus, '_is_connected', False)
+            health_info["components"]["event_bus"] = {
+                "status": "healthy" if event_connected else "degraded",
+                "redis_connected": event_connected
+            }
+        else:
+            health_info["components"]["event_bus"] = {"status": "unavailable"}
+
+        # Menu system health
+        if self.menu_system_coordinator:
+            try:
+                menu_health = await self.menu_system_coordinator.get_system_health()
+                health_info["components"]["menu_system"] = {
+                    "status": "healthy" if menu_health.get("overall_health_score", 0) > 80 else "degraded",
+                    "health_score": menu_health.get("overall_health_score", 0),
+                    "performance_metrics": menu_health.get("performance", {}),
+                    "message_management": menu_health.get("message_management", {})
+                }
+            except Exception as e:
+                health_info["components"]["menu_system"] = {
+                    "status": "degraded",
+                    "error": str(e)
+                }
+        else:
+            health_info["components"]["menu_system"] = {"status": "unavailable"}
+
+        # Determine overall status
+        component_statuses = [comp["status"] for comp in health_info["components"].values()]
+        if "unavailable" in component_statuses:
+            health_info["overall_status"] = "degraded"
+        elif "degraded" in component_statuses:
+            health_info["overall_status"] = "degraded"
+
+        return health_info

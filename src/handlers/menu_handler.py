@@ -31,21 +31,44 @@ class MenuHandlerSystem(BaseHandler):
         self.event_bus = event_bus
         self.menu_factory = menu_factory
         self.message_manager = message_manager
-        logger.info("MenuHandlerSystem initialized.")
+        # Initialize coordinator service to None - it will be set up later
+        self.coordinator_service = None
+        logger.info("MenuHandlerSystem initialized with basic services.")
 
     async def handle(self, update: Any) -> Optional[CommandResponse]:
         """Generic handler entry point, routes to specific handlers."""
         if isinstance(update, Message) and update.text and update.text.startswith('/'):
-            return await self.handle_command(update)
+            await self.handle_command(update)
         elif isinstance(update, CallbackQuery):
-            return await self.handle_callback(update)
+            await self.handle_callback(update)
         return None
 
-    async def handle_command(self, message: Message) -> None:
+    async def handle_start_command(self, message: Message) -> None:
+        """Handle /start command."""
+        logger.info(f"handle_start_command called for user {message.from_user.id}")
+        await self.handle_menu_command_impl(message)
+
+    async def handle_menu_command(self, message: Message) -> None:
+        """Handle /menu command."""
+        logger.info(f"handle_menu_command called for user {message.from_user.id}")
+        await self.handle_menu_command_impl(message)
+
+    async def handle_help_command(self, message: Message) -> None:
+        """Handle /help command."""
+        logger.info(f"handle_help_command called for user {message.from_user.id}")
+        # For now, treat help the same as menu
+        await self.handle_menu_command_impl(message)
+
+    async def handle_menu_command_impl(self, message: Message) -> None:
         """
         Handles menu-related commands, sends the menu, and tracks the message.
         """
         if not message.from_user:
+            return
+
+        # Check if bot instance is available
+        if not hasattr(self.message_manager, 'bot') or not self.message_manager.bot:
+            logger.error("MessageManager bot instance is not available")
             return
 
         chat_id = message.chat.id
@@ -58,7 +81,7 @@ class MenuHandlerSystem(BaseHandler):
 
         try:
             telegram_user = message.from_user.model_dump()
-            user_context = await self.user_service.get_or_create_user_context(user_id, telegram_user)
+            user_context = await self.user_service.get_enhanced_user_menu_context(user_id)
         except Exception as e:
             logger.error(f"Error getting user context for {user_id}: {e}", exc_info=True)
             sent_msg = await self.message_manager.bot.send_message(chat_id, "Error retrieving your profile.")
@@ -68,7 +91,14 @@ class MenuHandlerSystem(BaseHandler):
         # Track evaluation before generating menu
         await self._track_lucien_evaluation(user_id, command, {"message": message.model_dump_json(), "user_context": user_context})
 
-        menu = await self.get_menu_for_context(user_context, MenuType.MAIN)
+        # Determine menu type based on command
+        menu_id = "main_menu"  # Default to main menu
+        if command:
+            # Remove the slash and get the menu ID from configuration
+            clean_command = command.lstrip('/')
+            menu_id = menu_system_config.get_routing_rule(clean_command)
+
+        menu = await self.get_menu_for_context(user_context, menu_id)
         if not menu:
             sent_msg = await self.message_manager.bot.send_message(chat_id, "Could not generate a menu.")
             await self.message_manager.track_message(sent_msg.chat.id, sent_msg.message_id, 'error_message')
@@ -76,12 +106,20 @@ class MenuHandlerSystem(BaseHandler):
 
         # Render and send the menu directly
         text, reply_markup = self._render_menu_parts(menu)
-        sent_menu_msg = await self.message_manager.bot.send_message(
-            chat_id=chat_id,
-            text=text,
-            reply_markup=reply_markup,
-            parse_mode="HTML"
-        )
+        try:
+            sent_menu_msg = await self.message_manager.bot.send_message(
+                chat_id=chat_id,
+                text=text,
+                reply_markup=reply_markup,
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.error(f"Failed to send message: {e}")
+            # Try to send a simple message without markup
+            sent_menu_msg = await self.message_manager.bot.send_message(
+                chat_id=chat_id,
+                text="Error displaying menu. Please try again."
+            )
 
         # Track the new menu message, marking it as the main menu
         await self.message_manager.track_message(
@@ -107,7 +145,7 @@ class MenuHandlerSystem(BaseHandler):
         await query.answer()
 
         try:
-            user_context = await self.user_service.get_user_context(user_id)
+            user_context = await self.user_service.get_enhanced_user_menu_context(user_id)
         except Exception as e:
             logger.error(f"Error getting user context for {user_id}: {e}", exc_info=True)
             await self.message_manager.bot.send_message(chat_id, "Error retrieving your profile.")
@@ -115,6 +153,11 @@ class MenuHandlerSystem(BaseHandler):
 
         # Track evaluation before generating menu
         await self._track_lucien_evaluation(user_id, query.data, {"callback_query": query.model_dump_json(), "user_context": user_context})
+
+        # Handle worthiness explanation requests
+        if query.data.startswith("explain_divan_worthiness") or query.data.startswith("worthiness_explanation"):
+            await self._handle_worthiness_explanation(query, user_context)
+            return
 
         if query.data.startswith("menu:"):
             menu_id = query.data.split(":", 1)[1]
@@ -161,7 +204,7 @@ class MenuHandlerSystem(BaseHandler):
         except Exception as e:
             logger.error(f"Error during message cleanup in chat {chat_id}: {e}", exc_info=True)
 
-    async def get_menu_for_context(self, user_context: Dict[str, Any], menu_identifier: Any) -> Optional[Menu]:
+    async def get_menu_for_context(self, user_context: Dict[str, Any], menu_identifier: Any = MenuType.MAIN) -> Optional[Menu]:
         """Generates a menu using the menu factory."""
         try:
             return await self.menu_factory.create_menu(menu_identifier, user_context)
@@ -191,6 +234,85 @@ class MenuHandlerSystem(BaseHandler):
         
         reply_markup = InlineKeyboardMarkup(inline_keyboard=buttons)
         return text, reply_markup
+
+    def set_coordinator_service(self, coordinator_service):
+        """Set the coordinator service after initialization to avoid circular dependencies."""
+        self.coordinator_service = coordinator_service
+        logger.info("Coordinator service set for MenuHandlerSystem.")
+
+    def register_handlers(self, dp):
+        """Register handlers with the aiogram dispatcher."""
+        from aiogram import types
+        from aiogram.dispatcher.filters import Command
+        
+        # Register command handlers
+        dp.register_message_handler(self.handle_start_command, Command("start"))
+        dp.register_message_handler(self.handle_menu_command, Command("menu"))
+        dp.register_message_handler(self.handle_help_command, Command("help"))
+        
+        # Register callback query handler
+        dp.register_callback_query_handler(self.handle_callback)
+        
+        # Register a fallback message handler
+        dp.register_message_handler(self.handle_fallback_message)
+        
+        logger.info("MenuHandlerSystem handlers registered with dispatcher")
+        # Log all registered handlers for debugging
+        for handler in dp.message_handlers.handlers:
+            logger.debug(f"Registered message handler: {handler}")
+        for handler in dp.callback_query_handlers.handlers:
+            logger.debug(f"Registered callback handler: {handler}")
+
+    async def handle_fallback_message(self, message: Message) -> None:
+        """Handle any message that doesn't match other handlers."""
+        if message.text and message.text.startswith('/'):
+            # If it's an unknown command, treat it like a menu command
+            await self.handle_menu_command_impl(message)
+        else:
+            # For non-command messages, you could implement other logic
+            pass
+
+    async def _handle_worthiness_explanation(self, query: CallbackQuery, user_context: Dict[str, Any]) -> None:
+        """Handle worthiness explanation requests."""
+        try:
+            # Generate detailed worthiness explanation
+            worthiness_explanation = await self.user_service.generate_worthiness_explanation(
+                user_context.get("user_id"), 
+                query.data
+            )
+            
+            # Format the explanation as a message
+            explanation_text = (
+                f"<b>✨ Evaluación de Worthiness ✨</b>\n\n"
+                f"<b>Puntaje Actual:</b> {worthiness_explanation['current_score']:.2f}\n"
+                f"<b>Evaluación:</b> {worthiness_explanation['description_text']}\n\n"
+                f"<b>Áreas de Mejora:</b>\n"
+            )
+            
+            for area in worthiness_explanation['improvement_areas']:
+                explanation_text += f"• {area.replace('_', ' ').title()}\n"
+            
+            explanation_text += "\n<b>Próximos Hitos:</b>\n"
+            for milestone in worthiness_explanation['next_milestones']:
+                explanation_text += f"• {milestone.replace('_', ' ').title()}\n"
+            
+            explanation_text += "\n<b>Orientación Personalizada:</b>\n"
+            for guidance in worthiness_explanation['personalized_guidance']:
+                explanation_text += f"• {guidance}\n"
+            
+            # Send the explanation as a new message
+            await self.message_manager.bot.send_message(
+                query.message.chat.id,
+                explanation_text,
+                parse_mode="HTML"
+            )
+            
+            # Answer the callback query
+            await query.answer("Evaluación de worthiness generada")
+
+        except Exception as e:
+            logger.error(f"Error handling worthiness explanation: {e}")
+            await query.answer("Error generando la explicación", show_alert=True)
 
     async def _track_lucien_evaluation(self, user_id: str, user_action: str, 
                                      context: Dict[str, Any]) -> None:

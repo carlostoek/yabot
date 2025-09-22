@@ -203,3 +203,84 @@
 
 # 2025-09-19 15:17:11.387176
 +Genial ya estaba arrancando ya puedo interactuar con el bot pero esta mezcla de librerías entre aiogram y Telegram bot no afectará en el desarrollo futuro?
+
+# 2025-09-22 01:07:54.745810
++Y
+
+# 2025-09-22 01:07:59.964944
++The issue is the         │    │   menu system                │    │     coordinator              │    │   initialization             │    │     failure. The fix I       │    │   applied                    │
++│     for handlercoordinator              │
++│   initialization             │
++│     failure. The fix I       │
++│   applied                    │
++│     for handler              │
++│   registration               │    │     timing is correct,       │    │   but the menu system              │
++│   coordinator                │
++│     itself is failing to     │
++│     initialize.
+
+# 2025-09-22 01:15:48.869630
++Tengo esto cuando envío un comando 
++
++INFO:aiogram.event:Update id=277600326 is not handled. Duration 0 ms by bot id=7360762013
++INFO:aiogram.event:Update id=277600327 is not handled. Duration 0 ms by bot id=7360762013
+
+# 2025-09-22 01:18:14.217610
++/run ps aux | grep python
+
+# 2025-09-22 01:18:14.217723
++/run ps aux | grep python
+
+# 2025-09-22 01:18:22.166368
++.
+
+# 2025-09-22 01:19:58.261703
++/run pkill -f "python -m src.main"
+
+# 2025-09-22 01:19:58.261794
++/run pkill -f "python -m src.main"
+
+# 2025-09-22 01:20:07.713600
++/run python -m src.main
+
+# 2025-09-22 01:20:07.713740
++/run python -m src.main
+
+# 2025-09-22 01:29:18.934633
++/run pkill -f "python -m src.main"
+
+# 2025-09-22 01:29:18.934758
++/run pkill -f "python -m src.main"
+
+# 2025-09-22 01:29:19.278275
++/run sleep 2
+
+# 2025-09-22 01:29:19.278369
++/run sleep 2
+
+# 2025-09-22 01:29:21.601448
++/run python -m src.main
+
+# 2025-09-22 01:29:21.601543
++/run python -m src.main
+
+# 2025-09-22 12:48:20.317035
++/add src/core/application.py
+
+# 2025-09-22 12:48:49.567005
++/add src/main.py
+
+# 2025-09-22 12:50:27.925134
++Ayúdame con un problema con mi bot que no cierra al oprimir ctrl+c
+
+# 2025-09-22 12:54:50.877628
++No, pone esto pero sigue activo
++
++INFO:aiogram.dispatcher:Polling stopped
+
+# 2025-09-22 12:59:53.992481
++Ahora poner algo más, pero sigue activo , te mando reloj completo de arranque y al oprimir ctrl-c 
++
++registered                                                 INFO:aiogram.dispatcher:Start polling                      WARNING:src.shared.registry.module_registry:Failed to publish state change event: Unsupported event type: module_state_changed                                                   WARNING:src.shared.registry.module_registry:Failed to publish state change event: Unsupported event type: module_state_changed
++WARNING:src.shared.registry.module_registry:Failed to publish state change event: Unsupported event type: module_state_changed                                                   WARNING:src.shared.registry.module_registry:Failed to publish state change event: Unsupported event type: module_state_changed                                                   WARNING:src.shared.registry.module_registry:Failed to publish state change event: Unsupported event type: module_state_changed                                                   WARNING:src.shared.registry.module_registry:Failed to publish state change event: Unsupported event type: module_state_changed                                                   INFO:aiogram.dispatcher:Run polling for bot @El_Mayordomobot id=7360762013 - 'El Mayordomo del Diván'                 ^CWARNING:aiogram.dispatcher:Received SIGINT signal
++INFO:aiogram.dispatcher:Polling stopped for bot @El_Mayordomobot id=7360762013 - 'El Mayordomo del Diván'             INFO:aiogram.dispatcher:Polling stopped  

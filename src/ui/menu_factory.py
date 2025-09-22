@@ -21,6 +21,19 @@ from src.ui.lucien_voice_generator import (
     LucienPersonalityConstants
 )
 
+# Import centralized menu configuration
+from src.ui.menu_config import (
+    MenuType,
+    ActionType,
+    UserRole,
+    MenuItemConfig,
+    MenuConfig,
+    menu_system_config
+)
+
+# Import UserService for delegation of complex operations
+from src.services.user import UserService
+
 logger = logging.getLogger(__name__)
 
 # Telegram Bot API constants
@@ -49,38 +62,6 @@ class ValidationError(MenuError):
     pass
 
 
-class UserRole(Enum):
-    """User role enumeration for menu access control."""
-    GUEST = "guest"
-    FREE_USER = "free_user"
-    VIP_USER = "vip_user"
-    ADMIN = "admin"
-    SUPER_ADMIN = "super_admin"
-
-
-class MenuType(Enum):
-    """Menu type enumeration for different contexts."""
-    MAIN = "main"
-    NARRATIVE = "narrative"
-    GAMIFICATION = "gamification"
-    ADMIN = "admin"
-    VIP = "vip"
-    PROFILE = "profile"
-    STORE = "store"
-    EMOTIONAL = "emotional"
-    DIANA = "diana"
-
-
-class ActionType(Enum):
-    """Action type for menu items."""
-    COMMAND = "command"
-    CALLBACK = "callback"
-    URL = "url"
-    SUBMENU = "submenu"
-    NARRATIVE_ACTION = "narrative_action"
-    ADMIN_ACTION = "admin_action"
-
-
 @dataclass
 class MenuItem:
     """Represents a single menu item with all necessary properties."""
@@ -106,6 +87,26 @@ class MenuItem:
         self._validate_callback_data()
         self._add_role_indicators()
         self._set_lucien_voice_text()
+
+    @classmethod
+    def from_config(cls, config: MenuItemConfig) -> 'MenuItem':
+        """Create MenuItem from MenuItemConfig."""
+        return cls(
+            id=config.id,
+            text=config.text,
+            action_type=config.action_type,
+            action_data=config.action_data,
+            icon=config.icon,
+            description=config.description,
+            required_role=config.required_role,
+            required_vip=config.required_vip,
+            required_level=config.required_level,
+            requires_besitos=config.requires_besitos,
+            visible_condition=config.visible_condition,
+            enabled_condition=config.enabled_condition,
+            metadata=config.metadata,
+            required_worthiness=config.required_worthiness
+        )
 
     def _set_lucien_voice_text(self) -> None:
         """Set Lucien voice text if not provided."""
@@ -195,6 +196,27 @@ class Menu:
         self._validate_menu()
         self._add_navigation_items()
 
+    @classmethod
+    def from_config(cls, config: MenuConfig, user_context: Dict[str, Any] = None) -> 'Menu':
+        """Create Menu from MenuConfig."""
+        # Convert MenuItemConfig items to MenuItem objects
+        menu_items = [MenuItem.from_config(item_config) for item_config in config.items]
+        
+        return cls(
+            menu_id=config.menu_id,
+            title=config.title,
+            description=config.description,
+            menu_type=config.menu_type,
+            required_role=config.required_role,
+            items=menu_items,
+            header_text=config.header_text,
+            footer_text=config.footer_text,
+            max_columns=config.max_columns,
+            is_dynamic=config.is_dynamic,
+            parent_menu_id=config.parent_menu_id,
+            navigation_path=config.navigation_path
+        )
+
     def _validate_menu(self) -> None:
         """Validate menu structure and constraints."""
         # Validate total number of items
@@ -277,9 +299,14 @@ class MenuBuilder(ABC):
 class MainMenuBuilder(MenuBuilder):
     """Builder for organic unified menu system that shows all options with elegant restrictions."""
 
-    def __init__(self):
-        """Initialize MainMenuBuilder with Lucien voice profile."""
+    def __init__(self, user_service: Optional[UserService] = None):
+        """Initialize MainMenuBuilder with Lucien voice profile.
+        
+        Args:
+            user_service (Optional[UserService]): UserService instance for delegation of complex operations
+        """
         self.lucien_profile = LucienVoiceProfile()
+        self.user_service = user_service
 
     def build_menu(self, user_context: Dict[str, Any], **kwargs) -> Menu:
         """Build organic main menu that shows all options with elegant restrictions."""
@@ -510,24 +537,38 @@ class MainMenuBuilder(MenuBuilder):
         """Generate Lucien's explanation for worthiness requirements."""
         worthiness_score = user_context.get('worthiness_score', 0.0)
         required_worthiness = 0.6
+        relationship_level = user_context.get('relationship_level', 'formal_examiner')
+        sophistication_score = user_context.get('sophistication_score', 0.0)
+        diana_encounters_earned = user_context.get('diana_encounters_earned', 0)
 
+        # Enhanced explanation based on multiple factors
         if worthiness_score < 0.2:
             return (
-                "<b>El Diván</b> representa un nivel de intimidad y comprensión que debe ganarse "
-                "a través del desarrollo personal. Sus interacciones actuales sugieren que está "
-                "en las etapas iniciales de este viaje de sofisticación."
+                f"<b>El Diván</b> representa un nivel de intimidad y comprensión que debe ganarse "
+                f"a través del desarrollo personal. Sus interacciones actuales (valor: {worthiness_score:.2f}) "
+                f"sugieren que está en las etapas iniciales de este viaje de sofisticación. "
+                f"Continúe explorando las experiencias disponibles para construir su perfil."
             )
         elif worthiness_score < 0.4:
             return (
-                "<b>El Diván</b> está reservado para quienes han demostrado un nivel excepcional "
-                "de madurez emocional. Su progreso es notable, pero aún requiere mayor "
-                "profundidad en su comprensión."
+                f"<b>El Diván</b> está reservado para quienes han demostrado un nivel excepcional "
+                f"de madurez emocional. Su progreso es notable (valor: {worthiness_score:.2f}), "
+                f"pero aún requiere mayor profundidad en su comprensión. "
+                f"Su relación con Lucien actualmente es '{relationship_level}' y su nivel de sofisticación es {sophistication_score:.2f}."
+            )
+        elif worthiness_score < 0.6:
+            return (
+                f"<b>El Diván</b> reconoce su crecimiento (valor: {worthiness_score:.2f}), "
+                f"pero requiere la membresía VIP para completar su acceso. "
+                f"Su desarrollo personal ya demuestra la sofisticación necesaria para estos privilegios. "
+                f"Ha ganado {diana_encounters_earned} encuentros con Diana hasta ahora."
             )
         else:
             return (
-                "<b>El Diván</b> reconoce su crecimiento, pero requiere la membresía VIP para "
-                "completar su acceso. Su desarrollo personal ya demuestra la sofisticación "
-                "necesaria para estos privilegios."
+                f"<b>✨ ¡Felicidades! ✨</b> Su perfil (valor: {worthiness_score:.2f}) "
+                f"demuestra la madurez emocional y sofisticación necesarias para <b>El Diván</b>. "
+                f"Su relación con Lucien es '{relationship_level}' y su nivel de sofisticación es {sophistication_score:.2f}. "
+                f"Para completar su acceso, se requiere membresía VIP."
             )
 
     def _generate_restriction_explanation(self, item_id: str, restriction_type: str, user_context: Dict[str, Any]) -> str:
@@ -1021,144 +1062,83 @@ from src.utils.cache_manager import cache_manager
 class MenuFactory:
     """Main factory class for generating menus based on context."""
 
-    def __init__(self):
-        """Initialize menu factory with builders."""
+    def __init__(self, user_service: Optional[UserService] = None):
+        """Initialize menu factory with builders.
+        
+        Args:
+            user_service (Optional[UserService]): UserService instance for delegation of complex operations
+        """
+        self.user_service = user_service
         self.builders = {
             MenuType.MAIN: MainMenuBuilder(),  # Use organic main menu builder
             MenuType.NARRATIVE: NarrativeMenuBuilder(),
             MenuType.ADMIN: AdminMenuBuilder(),
             MenuType.VIP: VIPMenuBuilder(),
-            MenuType.STORE: MainMenuBuilder()  # Use organic main menu builder for store too
+            MenuType.STORE: MainMenuBuilder(),  # Use organic main menu builder for store too
+            MenuType.GAMIFICATION: MainMenuBuilder(),
+            MenuType.PROFILE: MainMenuBuilder(),
+            MenuType.EMOTIONAL: MainMenuBuilder(),
+            MenuType.DIANA: MainMenuBuilder(),
+            MenuType.SETTINGS: MainMenuBuilder(),
+            MenuType.HELP: MainMenuBuilder()
         }
 
         self.menu_definitions = self._initialize_menu_definitions()
         self.cache_manager = cache_manager
         # Initialize cache connection only when running in async context
-        try:
-            asyncio.create_task(self.cache_manager.connect())
-        except RuntimeError:
-            # No event loop running, cache will connect when needed
-            pass
-
+        # Use a flag to track if we're connected to avoid multiple connection attempts
+        self._cache_connected = False
         # Callback data mapping for compression
         self.callback_mapping = {}
+        logger.info("MenuFactory initialized (cache connection will be established on first use)")
 
     def _initialize_menu_definitions(self) -> Dict[str, Dict]:
         """Initialize static menu definitions for organic menu system."""
-        return {
-            "personal_universe_menu": {
-                "title": "<b>🎒 Mi Universo Personal</b>",
-                "items": [
-                    {
-                        "id": "progreso_diana",
-                        "text": "<b>📊 Mi Progreso con Diana</b>",
-                        "action": "show_diana_progress",
-                        "description": "Tu evolución emocional y narrative level"
-                    },
-                    {
-                        "id": "tesoro_besitos",
-                        "text": "<b>💰 Tesoro de Besitos</b>",
-                        "action": "show_besitos_wallet",
-                        "description": "Tu moneda emocional y transacciones"
-                    },
-                    {
-                        "id": "perfil_emocional",
-                        "text": "<b>🧠 Perfil Emocional</b>",
-                        "action": "show_emotional_signature",
-                        "description": "Tu firma emocional única con Diana"
-                    },
-                    {
-                        "id": "logros_desbloqueados",
-                        "text": "<b>🏆 Logros Desbloqueados</b>",
-                        "action": "show_achievements_gallery",
-                        "description": "Hitos de tu journey personal"
-                    },
-                    {
-                        "id": "configuracion_avanzada",
-                        "text": "<b>⚙️ Configuración Avanzada</b>",
-                        "action": "show_advanced_settings",
-                        "description": "Personaliza tu experiencia"
-                    }
-                ]
-            },
+        # Use centralized menu definitions
+        return menu_system_config.definitions
 
-            "experiences_menu": {
-                "title": "<b>🎮 Experiencias Interactivas</b>",
-                "items": [
-                    {
-                        "id": "mis_misiones",
-                        "text": "<b>🎯 Mis Misiones</b>",
-                        "action": "show_active_missions",
-                        "description": "Desafíos actuales y próximos objetivos"
-                    },
-                    {
-                        "id": "regalo_diario",
-                        "text": "<b>🎁 Regalo Diario</b>",
-                        "action": "claim_daily_gift",
-                        "description": "Tu recompensa diaria esperándote"
-                    },
-                    {
-                        "id": "juegos_emotivos",
-                        "text": "<b>🎲 Juegos Emotivos</b>",
-                        "action": "show_emotional_games",
-                        "description": "Actividades lúdicas para profundizar conexión"
-                    },
-                    {
-                        "id": "desafios_lucien",
-                        "text": "<b>🎪 Desafíos de Lucien</b>",
-                        "action": "show_lucien_challenges",
-                        "description": "Pruebas de sophistication y worthiness"
-                    }
-                ]
-            },
-
-            "circulo_intimo_menu": {
-                "title": "<b>✨ Círculo Íntimo</b>",
-                "items": [
-                    {
-                        "id": "experiencias_exclusivas",
-                        "text": "<b>💫 Experiencias Exclusivas</b>",
-                        "action": "show_exclusive_experiences",
-                        "description": "Encuentros únicos reservados para VIP",
-                        "required_vip": True
-                    },
-                    {
-                        "id": "archivo_personal_diana",
-                        "text": "<b>📚 Archivo Personal de Diana</b>",
-                        "action": "show_diana_personal_archive",
-                        "description": "Memorias íntimas y reflexiones profundas",
-                        "required_vip": True
-                    },
-                    {
-                        "id": "sesiones_personalizadas",
-                        "text": "<b>🌟 Sesiones Personalizadas</b>",
-                        "action": "start_personalized_session",
-                        "description": "Encuentros adaptados específicamente a ti",
-                        "required_vip": True
-                    },
-                    {
-                        "id": "invitacion_vip",
-                        "text": "<b>💎 Invitación al Círculo</b>",
-                        "action": "show_vip_invitation",
-                        "description": "Descubre los privilegios de la membresía VIP",
-                        "required_role": "free_user"
-                    }
-                ]
-            }
-        }
-
-    async def create_menu(self, menu_type: MenuType, user_context: Dict[str, Any], **kwargs) -> Menu:
+    async def create_menu(self, menu_type: Union[MenuType, str], user_context: Dict[str, Any], **kwargs) -> Menu:
         """Create menu based on type and user context, with caching."""
-        cached_menu = await self.cache_manager.get_menu(menu_type.value, user_context)
-        if cached_menu:
-            return cached_menu
+        # Try to use cache if available and connected
+        try:
+            if not self._cache_connected:
+                await self.cache_manager.connect()
+                self._cache_connected = True
+                logger.info("Cache manager connected successfully")
+            
+            # Convert string menu_type to MenuType enum if needed
+            if isinstance(menu_type, str):
+                try:
+                    menu_type = MenuType(menu_type)
+                except ValueError:
+                    logger.warning(f"Invalid menu type '{menu_type}', defaulting to MAIN")
+                    menu_type = MenuType.MAIN
+            
+            cached_menu = await self.cache_manager.get_menu(menu_type.value, user_context)
+            if cached_menu:
+                return cached_menu
+        except Exception as e:
+            logger.warning(f"Cache operation failed, proceeding without cache: {str(e)}")
+            # Continue without cache if there's an error
 
+        # Build the menu
         if menu_type in self.builders:
             new_menu = self.builders[menu_type].build_menu(user_context, **kwargs)
         else:
-            new_menu = self._create_basic_menu(menu_type, user_context)
+            # Try to get from centralized definitions
+            menu_config = menu_system_config.get_menu_definition(menu_type.value)
+            if menu_config:
+                new_menu = Menu.from_config(menu_config, user_context)
+            else:
+                new_menu = self._create_basic_menu(menu_type, user_context)
 
-        await self.cache_manager.set_menu(new_menu, user_context)
+        # Try to cache the new menu
+        try:
+            if self._cache_connected:
+                await self.cache_manager.set_menu(new_menu, user_context)
+        except Exception as e:
+            logger.warning(f"Failed to cache menu: {str(e)}")
+            
         return new_menu
 
     async def create_organic_store_menu(self, user_context: Dict[str, Any]) -> Menu:
@@ -1181,20 +1161,27 @@ class MenuFactory:
 
     def _create_organic_menu_from_definition(self, menu_id: str, user_context: Dict[str, Any]) -> Menu:
         """Create menu from static definition using organic principles."""
-        definition = self.menu_definitions[menu_id]
+        definition = self.menu_definitions.get(menu_id)
+        if not definition:
+            # Fallback to basic menu
+            return self._create_basic_menu(MenuType.MAIN, user_context)
+            
         main_builder = self.builders[MenuType.MAIN]  # Use main builder
 
         items = []
-        for item_def in definition["items"]:
+        for item_def in definition.get("items", []):
             # Always show items, but process restrictions organically
             item = MenuItem(
-                id=item_def["id"],
-                text=item_def["text"],
-                action_type=ActionType.CALLBACK,
-                action_data=item_def["action"],
+                id=item_def.get("id", ""),
+                text=item_def.get("text", ""),
+                action_type=ActionType(item_def.get("action_type", ActionType.CALLBACK)),
+                action_data=item_def.get("action", item_def.get("action_data", "")),
                 description=item_def.get("description", ""),
                 required_role=UserRole(item_def.get("required_role", "free_user")),
-                required_vip=item_def.get("required_vip", False)
+                required_vip=item_def.get("required_vip", False),
+                required_level=item_def.get("required_level", 0),
+                requires_besitos=item_def.get("requires_besitos", 0),
+                required_worthiness=item_def.get("required_worthiness", 0.0)
             )
 
             # Process with organic restrictions
@@ -1205,12 +1192,17 @@ class MenuFactory:
 
         return Menu(
             menu_id=menu_id,
-            title=definition["title"],
-            description="Cada opción refleja tu journey personal",
-            menu_type=MenuType.PROFILE,
-            required_role=UserRole.FREE_USER,
+            title=definition.get("title", "Menú"),
+            description=definition.get("description", "Cada opción refleja tu journey personal"),
+            menu_type=MenuType(definition.get("menu_type", "profile")),
+            required_role=UserRole(definition.get("required_role", "free_user")),
             items=items,
-            parent_menu_id="organic_main_menu"
+            header_text=definition.get("header_text", ""),
+            footer_text=definition.get("footer_text", ""),
+            max_columns=definition.get("max_columns", 2),
+            is_dynamic=definition.get("is_dynamic", False),
+            parent_menu_id=definition.get("parent_menu_id", "main_menu"),
+            navigation_path=definition.get("navigation_path", [])
         )
 
     def _user_meets_organic_requirements(self, item_def: Dict, user_context: Dict[str, Any]) -> Tuple[bool, Optional[str]]:

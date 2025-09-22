@@ -30,6 +30,9 @@ class MenuIntegrationRouter(Router):
         Initializes the MenuIntegrationRouter.
         Inherits the core Router's initialization and adds a middleware manager.
         """
+        # Extract menu_coordinator from kwargs if present
+        self.menu_coordinator = kwargs.pop('menu_coordinator', None)
+        
         super().__init__(*args, **kwargs)
         self._callback_handlers: Dict[str, Callable] = {}
         self.middleware_manager = MiddlewareManager()
@@ -68,8 +71,23 @@ class MenuIntegrationRouter(Router):
         Returns:
             Any: The response from the executed handler, processed by middleware.
         """
-        logger.debug("Routing message...")
-        return await self.route_update(message)
+        logger.debug("Routing message in MenuIntegrationRouter...")
+        logger.debug("Message type: %s", type(message).__name__)
+        logger.debug("Message content: %s", message)
+
+        response = await self.route_update(message)
+
+        # If we got a CommandResponse, send it back to Telegram
+        if response and hasattr(response, 'text'):
+            logger.debug("Sending response back to Telegram: %s", response.text[:50] + "..." if len(response.text) > 50 else response.text)
+            await message.answer(
+                text=response.text,
+                parse_mode=getattr(response, 'parse_mode', 'HTML'),
+                reply_markup=getattr(response, 'reply_markup', None),
+                disable_notification=getattr(response, 'disable_notification', False)
+            )
+
+        return response
 
     async def route_callback(self, callback_query: CallbackQuery) -> Any:
         """
@@ -85,7 +103,7 @@ class MenuIntegrationRouter(Router):
             Any: The response from the executed handler, processed by middleware.
         """
         logger.debug("Routing callback query...")
-        
+
         # Process request through middleware
         processed_update = await self.middleware_manager.process_request(callback_query)
 
@@ -100,12 +118,46 @@ class MenuIntegrationRouter(Router):
                         response = await handler(processed_update, router=self)
                     else:
                         response = await handler(processed_update)
-                    
+
                     # Process response through middleware
-                    return await self.middleware_manager.process_response(response)
+                    processed_response = await self.middleware_manager.process_response(response)
+
+                    # If we got a CommandResponse, send it back to Telegram
+                    if processed_response and hasattr(processed_response, 'text'):
+                        logger.debug("Sending callback response back to Telegram: %s", processed_response.text[:50] + "..." if len(processed_response.text) > 50 else processed_response.text)
+                        await callback_query.answer()
+                        if callback_query.message:
+                            await callback_query.message.answer(
+                                text=processed_response.text,
+                                parse_mode=getattr(processed_response, 'parse_mode', 'HTML'),
+                                reply_markup=getattr(processed_response, 'reply_markup', None),
+                                disable_notification=getattr(processed_response, 'disable_notification', False)
+                            )
+                    elif processed_response:
+                        # For non-CommandResponse objects, just acknowledge the callback
+                        await callback_query.answer()
+
+                    return processed_response
 
         logger.debug("No specific callback handler found, using generic route_update.")
-        return await self.route_update(processed_update)
+        response = await self.route_update(processed_update)
+
+        # If we got a CommandResponse from the generic route, send it back to Telegram
+        if response and hasattr(response, 'text'):
+            logger.debug("Sending generic callback response back to Telegram: %s", response.text[:50] + "..." if len(response.text) > 50 else response.text)
+            await callback_query.answer()
+            if callback_query.message:
+                await callback_query.message.answer(
+                    text=response.text,
+                    parse_mode=getattr(response, 'parse_mode', 'HTML'),
+                    reply_markup=getattr(response, 'reply_markup', None),
+                    disable_notification=getattr(response, 'disable_notification', False)
+                )
+        elif response:
+            # For non-CommandResponse objects, just acknowledge the callback
+            await callback_query.answer()
+
+        return response
 
     async def route_update(self, update: Any) -> Any:
         """
@@ -117,10 +169,14 @@ class MenuIntegrationRouter(Router):
         Returns:
             Any: The final response after middleware processing.
         """
+        logger.debug("MenuIntegrationRouter routing update: %s", update)
+        logger.debug("Update type: %s", type(update).__name__)
         processed_update = await self.middleware_manager.process_request(update)
         
         # The original routing logic is in the parent class
+        logger.debug("Calling parent route_update...")
         response = await super().route_update(processed_update)
+        logger.debug("Parent route_update returned: %s", response)
         
         processed_response = await self.middleware_manager.process_response(response)
         

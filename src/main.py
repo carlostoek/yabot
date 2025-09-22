@@ -6,7 +6,6 @@ Implements requirements 5.1 and 5.7 for module isolation and failure recovery.
 
 import asyncio
 import logging
-import signal
 import sys
 from dotenv import load_dotenv
 from src.core.application import BotApplication
@@ -41,13 +40,114 @@ bot_app = None
 logger = None
 module_registry = None
 backup_automation = None
+# Track background tasks for proper cancellation
+background_tasks = set()
+
+def register_background_task(task: asyncio.Task, task_name: str = None) -> None:
+    """Register a background task for proper shutdown cancellation.
+
+    Args:
+        task: The asyncio.Task to track
+        task_name: Optional name for logging purposes
+    """
+    global background_tasks, logger
+    background_tasks.add(task)
+    if logger and task_name:
+        logger.debug(f"Registered background task: {task_name}")
+
+def unregister_background_task(task: asyncio.Task) -> None:
+    """Unregister a background task when it completes.
+
+    Args:
+        task: The asyncio.Task to unregister
+    """
+    global background_tasks
+    background_tasks.discard(task)
+
+async def _shutdown_module_background_tasks() -> None:
+    """Coordinate shutdown of module-specific background tasks."""
+    global bot_app, logger
+
+    if not bot_app:
+        return
+
+    try:
+        # Stop database manager background tasks
+        if hasattr(bot_app, 'database_manager') and bot_app.database_manager:
+            if logger:
+                logger.info("Stopping database recovery monitor tasks...")
+            await bot_app.database_manager.stop_offline_recovery_monitor()
+
+        # Stop event bus background tasks
+        if hasattr(bot_app, 'event_bus') and bot_app.event_bus:
+            if logger:
+                logger.info("Stopping event bus background tasks...")
+            await bot_app.event_bus.close()
+
+        # Stop cache manager background tasks
+        if hasattr(bot_app, 'cache_manager') and bot_app.cache_manager:
+            if logger:
+                logger.info("Stopping cache manager background tasks...")
+            await bot_app.cache_manager.close()
+
+        if logger:
+            logger.info("Module background tasks shutdown coordination completed")
+
+    except Exception as e:
+        if logger:
+            logger.error(f"Error during module background task shutdown: {e}")
+        # Continue with shutdown even if module coordination fails
 
 async def shutdown_bot(signum=None, frame=None):
     """Gracefully shutdown the bot application and all modules."""
-    global bot_app, logger, module_registry, backup_automation
-    
+    global bot_app, logger, module_registry, backup_automation, background_tasks
+
     if signum and logger:
         logger.info("Received signal %s, shutting down...", signum)
+
+    try:
+        # First, coordinate module shutdown to stop their background tasks
+        if bot_app:
+            # Stop module-specific background tasks first
+            await _shutdown_module_background_tasks()
+
+        # Stop the bot application to prevent new tasks from being created
+        if bot_app and bot_app.is_running:
+            if logger:
+                logger.info("Stopping bot application...")
+            success = await bot_app.stop()
+            if not success:
+                logger.warning("Bot application stop returned False")
+
+        # Cancel all remaining background tasks
+        if background_tasks:
+            logger.info("Cancelling %d remaining background tasks...", len(background_tasks))
+            for task in background_tasks:
+                if not task.done():
+                    task.cancel()
+
+            # Wait for tasks to complete cancellation with timeout
+            if background_tasks:
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(*background_tasks, return_exceptions=True),
+                        timeout=5.0
+                    )
+                    logger.info("All background tasks cancelled successfully")
+                except asyncio.TimeoutError:
+                    logger.warning("Some background tasks did not cancel within timeout")
+                    # Force cleanup remaining tasks
+                    for task in list(background_tasks):
+                        if not task.done():
+                            task.cancel()
+                            logger.warning(f"Force cancelled task: {task}")
+                except Exception as e:
+                    logger.error(f"Error during background task cancellation: {e}")
+
+    except Exception as e:
+        if logger:
+            logger.error(f"Error during initial shutdown phase: {e}")
+        # Continue with cleanup even if there are errors
     
     # Update module registry states
     if module_registry:
@@ -59,23 +159,35 @@ async def shutdown_bot(signum=None, frame=None):
     if backup_automation:
         await backup_automation.stop_scheduled_backups()
         logger.info("Backup automation stopped")
-    
-    # Stop the bot application
-    if bot_app and bot_app.is_running:
-        if logger:
-            logger.info("Stopping bot application...")
-        await bot_app.stop()
-    
+
+    # CRITICAL: Close database connections to allow event loop termination
+    if db_manager:
+        try:
+            await db_manager.close_all()
+            logger.info("Database connections closed")
+        except Exception as e:
+            logger.error(f"Error closing database connections: {e}")
+
+    # Close event bus Redis connections
+    if event_bus:
+        try:
+            await event_bus.close()
+            logger.info("Event bus connections closed")
+        except Exception as e:
+            logger.error(f"Error closing event bus: {e}")
+
     # Save final module registry state
     if module_registry:
         # Update all modules to STOPPED state
         for module_info in module_registry.get_all_modules():
             module_registry.update_module_state(module_info.name, ModuleState.STOPPED)
         logger.info("Module states updated to STOPPED")
-    
+
     if logger:
         logger.info("Bot application stopped")
-    sys.exit(0)
+    # Force exit after a short delay to ensure everything is cleaned up
+    await asyncio.sleep(0.1)
+    return True
 
 
 async def initialize_modules(module_registry):
@@ -148,17 +260,9 @@ async def main():
     if logger:
         logger.info("Starting YABOT application with atomic modules...")
     
-    # Set up signal handlers for graceful shutdown
-    signal.signal(signal.SIGTERM, lambda s, f: asyncio.create_task(shutdown_bot(s, f)))
-    signal.signal(signal.SIGINT, lambda s, f: asyncio.create_task(shutdown_bot(s, f)))
-    
-    # Initialize the module registry
-    # In a real implementation, we would pass the actual event bus
-    # module_registry = ModuleRegistry(bot_app.event_bus)
-    
     # Initialize the bot application
     bot_app = BotApplication()
-    
+
     # Start the bot
     success = await bot_app.start()
     
@@ -167,35 +271,27 @@ async def main():
             logger.error("Failed to start bot application")
         return
     
-    # Initialize atomic modules
-    # await initialize_modules(module_registry)
-    
-    # Initialize backup system
-    # await initialize_backup_system(bot_app.config_manager)
-    
-    # Start health monitoring
-    # await start_health_monitoring(module_registry)
-    
     if logger:
         logger.info("YABOT application started successfully with atomic modules")
     
-    # Keep the application running
+    # Wait for the polling task to complete (which handles signals internally)
     try:
-        while bot_app.is_running:
-            # Send heartbeats for modules
-            if module_registry:
-                for module_info in module_registry.get_all_modules():
-                    module_registry.heartbeat(module_info.name)
-            
-            await asyncio.sleep(1)
+        if hasattr(bot_app, '_polling_task') and bot_app._polling_task:
+            await bot_app._polling_task
     except asyncio.CancelledError:
         if logger:
-            logger.info("Bot application task was cancelled")
+            logger.info("Polling task was cancelled")
     except Exception as e:
         if logger:
-            logger.error("Unexpected error in bot application: %s", e)
+            logger.error("Unexpected error in polling task: %s", e)
     finally:
-        await shutdown_bot()
+        # Perform shutdown when polling stops
+        if logger:
+            logger.info("Performing final cleanup...")
+        if bot_app:
+            await bot_app.stop()
+        # Ensure the application exits
+        return
 
 
 if __name__ == "__main__":

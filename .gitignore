@@ -132,3 +132,4 @@ dmypy.json
 
 # MongoDB binaries
 mongodb-linux-x86_64-ubuntu2204-*/
+.aider*

@@ -188,9 +188,32 @@ class CallbackProcessor:
             
             return result
 
-        # Decompress if necessary (a real implementation would use the mapping)
-        # For now, we assume no compression is used.
+        # Handle worthiness explanation requests
+        if callback_data.startswith("explain_divan_worthiness") or callback_data.startswith("worthiness_explanation"):
+            result = CallbackActionResult(
+                success=True,
+                response_message="Worthiness explanation generated",
+                should_edit_menu=False,
+                cleanup_messages=False
+            )
+            
+            # Publish event for worthiness explanation
+            if self.event_bus:
+                try:
+                    event = create_event(
+                        "worthiness_explanation_requested",
+                        callback_data=callback_data,
+                        user_id=user_context.get("user_id"),
+                        chat_id=chat_id,
+                        user_context=user_context
+                    )
+                    await self.event_bus.publish("worthiness_explanation_requested", event.dict())
+                except Exception as e:
+                    logger.error(f"Failed to publish worthiness explanation event: {e}")
+            
+            return result
 
+        # Handle menu navigation
         if callback_data.startswith("menu:"):
             # Handle navigation
             menu_id = callback_data.split(":", 1)[1]

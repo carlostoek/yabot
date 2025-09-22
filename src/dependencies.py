@@ -13,6 +13,9 @@ from src.modules.gamification.mission_manager import MissionManager
 from src.modules.admin.access_control import AccessControl
 from src.modules.gamification.besitos_wallet import BesitosWallet
 from src.modules.admin.subscription_manager import SubscriptionManager
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 # This is a simplified dependency setup. In a real application,
 # you would have a more robust system for managing connections and sessions.
@@ -70,13 +73,33 @@ async def get_emotional_intelligence_service():
     # These would need to be properly implemented with actual dependency injection
     # For now, using placeholders as indicated in the original pattern
     user_service = None  # This would be properly injected
-    narrative_service = None  # This would be properly injected
+    
+    # Create mock objects for the required services
+    class MockBehavioralAnalysisEngine:
+        pass
+    
+    class MockPersonalizationContentService:
+        pass
+    
+    class MockEmotionalMemoryService:
+        pass
+    
+    class MockNarrativeProgressionManager:
+        pass
+    
+    behavioral_analysis_engine = MockBehavioralAnalysisEngine()
+    personalization_service = MockPersonalizationContentService()
+    memory_service = MockEmotionalMemoryService()
+    progression_manager = MockNarrativeProgressionManager()
     
     return EmotionalIntelligenceService(
         database_manager=database_manager,
         event_bus=event_bus,
         user_service=user_service,
-        narrative_service=narrative_service
+        behavioral_analysis_engine=behavioral_analysis_engine,
+        personalization_service=personalization_service,
+        memory_service=memory_service,
+        progression_manager=progression_manager
     )
 
 async def get_emotional_memory_service():

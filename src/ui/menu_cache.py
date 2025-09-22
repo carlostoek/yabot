@@ -783,6 +783,25 @@ class MenuCacheOptimizer:
         """Start background cleanup task."""
         if self._cleanup_task is None or self._cleanup_task.done():
             self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+            self._register_background_task(self._cleanup_task, "MenuCache cleanup task")
+
+    def _register_background_task(self, task: asyncio.Task, task_name: str) -> None:
+        """Register background task with the main application for proper shutdown."""
+        try:
+            # Import here to avoid circular imports
+            from src.main import register_background_task
+            register_background_task(task, task_name)
+        except ImportError:
+            logger.warning(f"Could not register background task {task_name} - main module not available")
+
+    def _unregister_background_task(self, task: asyncio.Task) -> None:
+        """Unregister background task from the main application."""
+        try:
+            # Import here to avoid circular imports
+            from src.main import unregister_background_task
+            unregister_background_task(task)
+        except ImportError:
+            pass  # Main module not available
 
     async def _cleanup_loop(self) -> None:
         """Background cleanup loop for cache maintenance."""
@@ -825,13 +844,16 @@ class MenuCacheOptimizer:
     async def close(self) -> None:
         """Close cache system and cleanup resources."""
         try:
-            # Cancel cleanup task
+            # Cancel and unregister cleanup task
             if self._cleanup_task and not self._cleanup_task.done():
                 self._cleanup_task.cancel()
+                self._unregister_background_task(self._cleanup_task)
                 try:
-                    await self._cleanup_task
-                except asyncio.CancelledError:
-                    pass
+                    await asyncio.wait_for(self._cleanup_task, timeout=2.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    logger.debug("Cleanup task cancelled/timed out during shutdown")
+                except Exception as e:
+                    logger.warning(f"Error during cleanup task cancellation: {e}")
 
             # Close cache manager connection
             await self.cache_manager.close()
