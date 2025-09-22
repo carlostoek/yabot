@@ -45,14 +45,17 @@ class MenuHandlerSystem(BaseHandler):
 
     async def handle_start_command(self, message: Message) -> None:
         """Handle /start command."""
-        await self.handle_menu_command(message)
+        logger.info(f"handle_start_command called for user {message.from_user.id}")
+        await self.handle_menu_command_impl(message)
 
     async def handle_menu_command(self, message: Message) -> None:
         """Handle /menu command."""
+        logger.info(f"handle_menu_command called for user {message.from_user.id}")
         await self.handle_menu_command_impl(message)
 
     async def handle_help_command(self, message: Message) -> None:
         """Handle /help command."""
+        logger.info(f"handle_help_command called for user {message.from_user.id}")
         # For now, treat help the same as menu
         await self.handle_menu_command_impl(message)
 
@@ -61,6 +64,11 @@ class MenuHandlerSystem(BaseHandler):
         Handles menu-related commands, sends the menu, and tracks the message.
         """
         if not message.from_user:
+            return
+
+        # Check if bot instance is available
+        if not hasattr(self.message_manager, 'bot') or not self.message_manager.bot:
+            logger.error("MessageManager bot instance is not available")
             return
 
         chat_id = message.chat.id
@@ -91,12 +99,20 @@ class MenuHandlerSystem(BaseHandler):
 
         # Render and send the menu directly
         text, reply_markup = self._render_menu_parts(menu)
-        sent_menu_msg = await self.message_manager.bot.send_message(
-            chat_id=chat_id,
-            text=text,
-            reply_markup=reply_markup,
-            parse_mode="HTML"
-        )
+        try:
+            sent_menu_msg = await self.message_manager.bot.send_message(
+                chat_id=chat_id,
+                text=text,
+                reply_markup=reply_markup,
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.error(f"Failed to send message: {e}")
+            # Try to send a simple message without markup
+            sent_menu_msg = await self.message_manager.bot.send_message(
+                chat_id=chat_id,
+                text="Error displaying menu. Please try again."
+            )
 
         # Track the new menu message, marking it as the main menu
         await self.message_manager.track_message(
@@ -229,6 +245,11 @@ class MenuHandlerSystem(BaseHandler):
         dp.register_message_handler(self.handle_fallback_message)
         
         logger.info("MenuHandlerSystem handlers registered with dispatcher")
+        # Log all registered handlers for debugging
+        for handler in dp.message_handlers.handlers:
+            logger.debug(f"Registered message handler: {handler}")
+        for handler in dp.callback_query_handlers.handlers:
+            logger.debug(f"Registered callback handler: {handler}")
 
     async def handle_fallback_message(self, message: Message) -> None:
         """Handle any message that doesn't match other handlers."""
