@@ -38,12 +38,25 @@ class MenuHandlerSystem(BaseHandler):
     async def handle(self, update: Any) -> Optional[CommandResponse]:
         """Generic handler entry point, routes to specific handlers."""
         if isinstance(update, Message) and update.text and update.text.startswith('/'):
-            return await self.handle_command(update)
+            await self.handle_command(update)
         elif isinstance(update, CallbackQuery):
-            return await self.handle_callback(update)
+            await self.handle_callback(update)
         return None
 
-    async def handle_command(self, message: Message) -> None:
+    async def handle_start_command(self, message: Message) -> None:
+        """Handle /start command."""
+        await self.handle_menu_command(message)
+
+    async def handle_menu_command(self, message: Message) -> None:
+        """Handle /menu command."""
+        await self.handle_menu_command_impl(message)
+
+    async def handle_help_command(self, message: Message) -> None:
+        """Handle /help command."""
+        # For now, treat help the same as menu
+        await self.handle_menu_command_impl(message)
+
+    async def handle_menu_command_impl(self, message: Message) -> None:
         """
         Handles menu-related commands, sends the menu, and tracks the message.
         """
@@ -198,6 +211,33 @@ class MenuHandlerSystem(BaseHandler):
         """Set the coordinator service after initialization to avoid circular dependencies."""
         self.coordinator_service = coordinator_service
         logger.info("Coordinator service set for MenuHandlerSystem.")
+
+    def register_handlers(self, dp):
+        """Register handlers with the aiogram dispatcher."""
+        from aiogram import types
+        from aiogram.dispatcher.filters import Command
+        
+        # Register command handlers
+        dp.register_message_handler(self.handle_start_command, Command("start"))
+        dp.register_message_handler(self.handle_menu_command, Command("menu"))
+        dp.register_message_handler(self.handle_help_command, Command("help"))
+        
+        # Register callback query handler
+        dp.register_callback_query_handler(self.handle_callback)
+        
+        # Register a fallback message handler
+        dp.register_message_handler(self.handle_fallback_message)
+        
+        logger.info("MenuHandlerSystem handlers registered with dispatcher")
+
+    async def handle_fallback_message(self, message: Message) -> None:
+        """Handle any message that doesn't match other handlers."""
+        if message.text and message.text.startswith('/'):
+            # If it's an unknown command, treat it like a menu command
+            await self.handle_menu_command_impl(message)
+        else:
+            # For non-command messages, you could implement other logic
+            pass
 
     async def _track_lucien_evaluation(self, user_id: str, user_action: str, 
                                      context: Dict[str, Any]) -> None:
