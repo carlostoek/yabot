@@ -1,0 +1,33 @@
+{
+  "123456789": {
+    "telegram_id": "123456789",
+    "username": null,
+    "first_name": "Test User",
+    "kisses": 10,
+    "inventory": [
+      "item1",
+      "item2"
+    ],
+    "achievements": [],
+    "role": "free",
+    "vip_expiry": null,
+    "last_daily_claim": null,
+    "current_narrative_fragment": null,
+    "narrative_choices": {},
+    "metadata": {}
+  },
+  "1280444712": {
+    "telegram_id": "1280444712",
+    "username": null,
+    "first_name": "Usuario",
+    "kisses": 5,
+    "inventory": [],
+    "achievements": [],
+    "role": "free",
+    "vip_expiry": null,
+    "last_daily_claim": null,
+    "current_narrative_fragment": null,
+    "narrative_choices": {},
+    "metadata": {}
+  }
+}
