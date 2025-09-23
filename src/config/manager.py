@@ -5,8 +5,7 @@ Configuration manager for the Telegram bot framework.
 import os
 from typing import Optional
 from dotenv import load_dotenv
-from src.core.models import BotConfig, WebhookConfig, LoggingConfig
-from src.utils.validators import InputValidator
+from src.core.models import BotConfig, WebhookConfig, LoggingConfig, DatabaseConfig, RedisConfig
 
 
 class ConfigManager:
@@ -18,6 +17,8 @@ class ConfigManager:
         self._bot_config: Optional[BotConfig] = None
         self._webhook_config: Optional[WebhookConfig] = None
         self._logging_config: Optional[LoggingConfig] = None
+        self._database_config: Optional[DatabaseConfig] = None
+        self._redis_config: Optional[RedisConfig] = None
     
     def get_bot_token(self) -> str:
         """Retrieve validated bot token.
@@ -65,6 +66,54 @@ class ConfigManager:
                 backup_count=int(os.getenv("LOG_BACKUP_COUNT", "5"))
             )
         return self._logging_config
+    
+    def get_database_config(self) -> DatabaseConfig:
+        """Get database configuration for MongoDB and SQLite.
+        
+        Returns:
+            DatabaseConfig: The database configuration
+            
+        Raises:
+            ValueError: If required database configuration is missing or invalid
+        """
+        if self._database_config is None:
+            mongodb_uri = os.getenv("MONGODB_URI")
+            if not mongodb_uri:
+                raise ValueError("MONGODB_URI environment variable is required but not set")
+            
+            mongodb_database = os.getenv("MONGODB_DATABASE", "yabot")
+            
+            # SQLite database path with default fallback
+            sqlite_database_path = os.getenv("SQLITE_DATABASE_PATH", "yabot.db")
+            
+            self._database_config = DatabaseConfig(
+                mongodb_uri=mongodb_uri,
+                mongodb_database=mongodb_database,
+                sqlite_database_path=sqlite_database_path
+            )
+        return self._database_config
+    
+    def get_redis_config(self) -> RedisConfig:
+        """Get Redis configuration.
+        
+        Returns:
+            RedisConfig: The Redis configuration
+            
+        Raises:
+            ValueError: If required Redis configuration is missing or invalid
+        """
+        if self._redis_config is None:
+            redis_url = os.getenv("REDIS_URL")
+            if not redis_url:
+                raise ValueError("REDIS_URL environment variable is required but not set")
+            
+            redis_password = os.getenv("REDIS_PASSWORD")
+            
+            self._redis_config = RedisConfig(
+                redis_url=redis_url,
+                redis_password=redis_password
+            )
+        return self._redis_config
     
     def validate_config(self) -> bool:
         """Validate all configuration parameters.
