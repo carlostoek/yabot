@@ -353,33 +353,85 @@ class MainMenuBuilder(MenuBuilder):
 
             self._adapt_lucien_voice_to_user(user_context)
 
-            # Core navigation items - always visible
+            # Core navigation items - always visible (matching user configuration)
             items = [
+                # Historia, Mochila, Misiones (first row as per config)
                 MenuItem(
-                    id="historia_diana", text="🎭 Historia con Diana", action_type=ActionType.SUBMENU,
+                    id="historia", text="📖 Historia", action_type=ActionType.SUBMENU,
                     action_data="narrative_menu", description="Tu narrativa personal en evolución",
-                    required_role=UserRole.FREE_USER, icon="🎭",
+                    required_role=UserRole.FREE_USER, icon="📖",
                     metadata={"navigation_priority": 100, "category": "main_content"}
                 ),
                 MenuItem(
-                    id="experiencias_interactivas", text="🎮 Experiencias Interactivas", action_type=ActionType.SUBMENU,
-                    action_data="experiences_menu", description="Misiones, juegos y desafíos",
-                    required_role=UserRole.FREE_USER, icon="🎮",
+                    id="mochila", text="🎒 Mochila", action_type=ActionType.SUBMENU,
+                    action_data="mochila_menu", description="Tu inventario y progreso personal",
+                    required_role=UserRole.FREE_USER, icon="🎒",
+                    metadata={"navigation_priority": 95, "category": "main_content"}
+                ),
+                MenuItem(
+                    id="misiones", text="🎯 Misiones", action_type=ActionType.SUBMENU,
+                    action_data="misiones_menu", description="Completa misiones para ganar recompensas",
+                    required_role=UserRole.FREE_USER, icon="🎯",
                     metadata={"navigation_priority": 90, "category": "main_content"}
                 ),
+
+                # Tienda (second row as per config)
                 MenuItem(
-                    id="coleccion_tesoros", text="🏪 Colección de Tesoros", action_type=ActionType.SUBMENU,
-                    action_data="organic_store_menu", description="Fragmentos, joyas y máscaras emocionales",
+                    id="tienda", text="🏪 Tienda", action_type=ActionType.SUBMENU,
+                    action_data="tienda_menu", description="Adquiere tesoros con tus besitos",
                     required_role=UserRole.FREE_USER, icon="🏪",
-                    metadata={"navigation_priority": 80, "category": "main_content"}
+                    metadata={"navigation_priority": 85, "category": "main_content"}
                 ),
+
+                # Regalo diario (third row as per config)
                 MenuItem(
-                    id="universo_personal", text="🎒 Mi Universo Personal", action_type=ActionType.SUBMENU,
-                    action_data="personal_universe_menu", description="Tu progreso y tesoros acumulados",
-                    required_role=UserRole.FREE_USER, icon="🎒",
-                    metadata={"navigation_priority": 70, "category": "main_content"}
+                    id="regalo_diario", text="🎁 Regalo Diario", action_type=ActionType.CALLBACK,
+                    action_data="daily_gift_menu", description="Reclama tu regalo diario",
+                    required_role=UserRole.FREE_USER, icon="🎁",
+                    metadata={"navigation_priority": 80, "category": "main_content"}
                 )
             ]
+
+            # VIP content (Mi Perfil, Recompensas, Ranking, Subastas as per config)
+            if has_vip:
+                vip_items = [
+                    MenuItem(
+                        id="mi_perfil", text="👤 Mi Perfil", action_type=ActionType.SUBMENU,
+                        action_data="profile_menu", description="Tu perfil VIP y estadísticas",
+                        required_role=UserRole.FREE_USER, required_vip=True, icon="👤",
+                        metadata={"navigation_priority": 75, "category": "vip_content"}
+                    ),
+                    MenuItem(
+                        id="recompensas", text="🏆 Recompensas", action_type=ActionType.SUBMENU,
+                        action_data="rewards_menu", description="Recompensas VIP exclusivas",
+                        required_role=UserRole.FREE_USER, required_vip=True, icon="🏆",
+                        metadata={"navigation_priority": 70, "category": "vip_content"}
+                    ),
+                    MenuItem(
+                        id="ranking", text="📊 Ranking", action_type=ActionType.SUBMENU,
+                        action_data="ranking_menu", description="Compite con otros usuarios VIP",
+                        required_role=UserRole.FREE_USER, required_vip=True, icon="📊",
+                        metadata={"navigation_priority": 65, "category": "vip_content"}
+                    ),
+                    MenuItem(
+                        id="subastas", text="💎 Subastas", action_type=ActionType.SUBMENU,
+                        action_data="auctions_menu", description="Participa en subastas exclusivas",
+                        required_role=UserRole.FREE_USER, required_vip=True, icon="💎",
+                        metadata={"navigation_priority": 60, "category": "vip_content"}
+                    )
+                ]
+                items.extend(vip_items)
+            else:
+                # Show VIP options but locked for non-VIP users
+                vip_preview_items = [
+                    MenuItem(
+                        id="vip_preview", text="🌟 Área VIP", action_type=ActionType.CALLBACK,
+                        action_data="show_vip_benefits", description="Descubre los beneficios VIP",
+                        required_role=UserRole.FREE_USER, icon="🌟",
+                        metadata={"navigation_priority": 60, "category": "vip_preview"}
+                    )
+                ]
+                items.extend(vip_preview_items)
 
             # Add El Diván with organic worthiness explanation if not accessible
             divan_item = await self._create_divan_menu_item(user_context)
@@ -988,6 +1040,516 @@ class AdminMenuBuilder(MenuBuilder):
             raise MenuGenerationError(f"Failed to build admin menu: {str(e)}") from e
 
 
+class MochilaMenuBuilder(MenuBuilder):
+    """Builder for inventory/mochila menu system."""
+
+    async def build_menu(self, user_context: Dict[str, Any], **kwargs) -> Menu:
+        """Build mochila/inventory menu."""
+        try:
+            user_context = self._validate_user_context(user_context)
+            user_id = user_context.get('user_id', 'unknown')
+            besitos = user_context.get('besitos', 0)
+            narrative_level = user_context.get('narrative_level', 1)
+            worthiness = user_context.get('worthiness', 0.0)
+
+            items = [
+                MenuItem(
+                    id="ver_items", text="📦 Ver Items", action_type=ActionType.CALLBACK,
+                    action_data="show_inventory_items", description="Revisa tus objetos recolectados",
+                    required_role=UserRole.FREE_USER, icon="📦"
+                ),
+                MenuItem(
+                    id="recursos", text="💰 Recursos", action_type=ActionType.CALLBACK,
+                    action_data="show_resources", description=f"Besitos: {besitos}",
+                    required_role=UserRole.FREE_USER, icon="💰"
+                ),
+                MenuItem(
+                    id="progreso", text="📈 Mi Progreso", action_type=ActionType.CALLBACK,
+                    action_data="show_progress", description=f"Nivel: {narrative_level}, Worthiness: {worthiness:.2f}",
+                    required_role=UserRole.FREE_USER, icon="📈"
+                ),
+                MenuItem(
+                    id="logros", text="🏅 Logros", action_type=ActionType.CALLBACK,
+                    action_data="show_achievements", description="Tus logros y medallas",
+                    required_role=UserRole.FREE_USER, icon="🏅"
+                )
+            ]
+
+            menu = Menu(
+                menu_id="mochila_menu", title="🎒 Mochila",
+                description="Tu inventario personal",
+                menu_type=MenuType.PROFILE, required_role=UserRole.FREE_USER, items=items,
+                header_text=f"<b>🎒 Tu Inventario Personal</b>\n💋 Besitos: {besitos} | ⭐ Nivel: {narrative_level}",
+                parent_menu_id="main_menu"
+            )
+
+            self._log_menu_creation("mochila_menu", user_id, True)
+            return menu
+
+        except Exception as e:
+            self._log_menu_creation("mochila_menu", user_context.get('user_id', 'unknown'), False, str(e))
+            raise MenuGenerationError(f"Failed to build mochila menu: {str(e)}")
+
+
+class MisionesMenuBuilder(MenuBuilder):
+    """Builder for missions menu system."""
+
+    async def build_menu(self, user_context: Dict[str, Any], **kwargs) -> Menu:
+        """Build missions menu."""
+        try:
+            user_context = self._validate_user_context(user_context)
+            user_id = user_context.get('user_id', 'unknown')
+
+            items = [
+                MenuItem(
+                    id="misiones_activas", text="📋 Misiones Activas", action_type=ActionType.CALLBACK,
+                    action_data="show_active_missions", description="Misiones en curso",
+                    required_role=UserRole.FREE_USER, icon="📋"
+                ),
+                MenuItem(
+                    id="misiones_completadas", text="✅ Completadas", action_type=ActionType.CALLBACK,
+                    action_data="show_completed_missions", description="Misiones terminadas",
+                    required_role=UserRole.FREE_USER, icon="✅"
+                ),
+                MenuItem(
+                    id="mision_diaria", text="📅 Misión Diaria", action_type=ActionType.CALLBACK,
+                    action_data="show_daily_mission", description="Misión especial del día",
+                    required_role=UserRole.FREE_USER, icon="📅"
+                ),
+                MenuItem(
+                    id="recompensas_mision", text="🎁 Recompensas", action_type=ActionType.CALLBACK,
+                    action_data="show_mission_rewards", description="Recompensas disponibles",
+                    required_role=UserRole.FREE_USER, icon="🎁"
+                )
+            ]
+
+            menu = Menu(
+                menu_id="misiones_menu", title="🎯 Misiones",
+                description="Completa misiones para ganar recompensas",
+                menu_type=MenuType.GAMIFICATION, required_role=UserRole.FREE_USER, items=items,
+                header_text="<b>🎯 Centro de Misiones</b>\nCompleta misiones para ganar besitos y desbloquear contenido",
+                parent_menu_id="main_menu"
+            )
+
+            self._log_menu_creation("misiones_menu", user_id, True)
+            return menu
+
+        except Exception as e:
+            self._log_menu_creation("misiones_menu", user_context.get('user_id', 'unknown'), False, str(e))
+            raise MenuGenerationError(f"Failed to build misiones menu: {str(e)}")
+
+
+class TiendaMenuBuilder(MenuBuilder):
+    """Builder for shop menu system."""
+
+    async def build_menu(self, user_context: Dict[str, Any], **kwargs) -> Menu:
+        """Build shop menu."""
+        try:
+            user_context = self._validate_user_context(user_context)
+            user_id = user_context.get('user_id', 'unknown')
+            besitos = user_context.get('besitos', 0)
+
+            items = [
+                MenuItem(
+                    id="items_premium", text="💎 Items Premium", action_type=ActionType.SUBMENU,
+                    action_data="shop_premium_menu", description="Objetos exclusivos y especiales",
+                    required_role=UserRole.FREE_USER, icon="💎"
+                ),
+                MenuItem(
+                    id="personalizaciones", text="🎨 Personalizaciones", action_type=ActionType.SUBMENU,
+                    action_data="shop_customization_menu", description="Temas y avatares",
+                    required_role=UserRole.FREE_USER, icon="🎨"
+                ),
+                MenuItem(
+                    id="potenciadores", text="⚡ Potenciadores", action_type=ActionType.SUBMENU,
+                    action_data="shop_boosters_menu", description="Mejora tu experiencia",
+                    required_role=UserRole.FREE_USER, icon="⚡"
+                ),
+                MenuItem(
+                    id="paquetes_especiales", text="🎁 Paquetes Especiales", action_type=ActionType.SUBMENU,
+                    action_data="shop_packages_menu", description="Ofertas combinadas",
+                    required_role=UserRole.FREE_USER, icon="🎁"
+                )
+            ]
+
+            menu = Menu(
+                menu_id="tienda_menu", title="🏪 Tienda",
+                description="Adquiere tesoros con tus besitos",
+                menu_type=MenuType.STORE, required_role=UserRole.FREE_USER, items=items,
+                header_text=f"<b>🏪 Tienda de Tesoros</b>\n💋 Tus Besitos: {besitos}",
+                footer_text="<i>Cada compra refleja tu evolución personal</i>",
+                parent_menu_id="main_menu"
+            )
+
+            self._log_menu_creation("tienda_menu", user_id, True)
+            return menu
+
+        except Exception as e:
+            self._log_menu_creation("tienda_menu", user_context.get('user_id', 'unknown'), False, str(e))
+            raise MenuGenerationError(f"Failed to build tienda menu: {str(e)}")
+
+
+class ProfileMenuBuilder(MenuBuilder):
+    """Builder for VIP profile menu system."""
+
+    async def build_menu(self, user_context: Dict[str, Any], **kwargs) -> Menu:
+        """Build VIP profile menu."""
+        try:
+            user_context = self._validate_user_context(user_context)
+            user_id = user_context.get('user_id', 'unknown')
+            has_vip = user_context.get('has_vip', False)
+
+            if not has_vip:
+                return await self._create_vip_required_menu()
+
+            items = [
+                MenuItem(
+                    id="estadisticas", text="📊 Estadísticas", action_type=ActionType.CALLBACK,
+                    action_data="show_detailed_stats", description="Tu perfil completo",
+                    required_role=UserRole.FREE_USER, required_vip=True, icon="📊"
+                ),
+                MenuItem(
+                    id="personalizar", text="🎨 Personalización", action_type=ActionType.CALLBACK,
+                    action_data="show_customization_options", description="Personaliza tu experiencia",
+                    required_role=UserRole.FREE_USER, required_vip=True, icon="🎨"
+                ),
+                MenuItem(
+                    id="logros_vip", text="🏆 Logros VIP", action_type=ActionType.CALLBACK,
+                    action_data="show_vip_achievements", description="Logros exclusivos VIP",
+                    required_role=UserRole.FREE_USER, required_vip=True, icon="🏆"
+                ),
+                MenuItem(
+                    id="progreso_avanzado", text="📈 Progreso Avanzado", action_type=ActionType.CALLBACK,
+                    action_data="show_advanced_progress", description="Análisis detallado de tu evolución",
+                    required_role=UserRole.FREE_USER, required_vip=True, icon="📈"
+                )
+            ]
+
+            menu = Menu(
+                menu_id="profile_menu", title="👤 Mi Perfil VIP",
+                description="Tu perfil VIP y estadísticas",
+                menu_type=MenuType.PROFILE, required_role=UserRole.FREE_USER, items=items,
+                header_text="<b>👤 Mi Perfil VIP</b>\nAcceso completo a estadísticas y personalización",
+                parent_menu_id="main_menu"
+            )
+
+            self._log_menu_creation("profile_menu", user_id, True)
+            return menu
+
+        except Exception as e:
+            self._log_menu_creation("profile_menu", user_context.get('user_id', 'unknown'), False, str(e))
+            raise MenuGenerationError(f"Failed to build profile menu: {str(e)}")
+
+    async def _create_vip_required_menu(self) -> Menu:
+        """Create VIP required menu."""
+        return Menu(
+            menu_id="vip_required", title="🚫 Acceso VIP Requerido",
+            description="Esta función requiere membresía VIP",
+            menu_type=MenuType.PROFILE, required_role=UserRole.FREE_USER,
+            items=[
+                MenuItem(
+                    id="get_vip", text="🌟 Obtener VIP", action_type=ActionType.CALLBACK,
+                    action_data="show_vip_benefits", description="Descubre los beneficios VIP",
+                    required_role=UserRole.FREE_USER, icon="🌟"
+                )
+            ],
+            header_text="<b>🚫 Función VIP</b>\nEsta función está disponible solo para miembros VIP",
+            parent_menu_id="main_menu"
+        )
+
+
+class RewardsMenuBuilder(MenuBuilder):
+    """Builder for VIP rewards menu system."""
+
+    async def build_menu(self, user_context: Dict[str, Any], **kwargs) -> Menu:
+        """Build VIP rewards menu."""
+        try:
+            user_context = self._validate_user_context(user_context)
+            user_id = user_context.get('user_id', 'unknown')
+            has_vip = user_context.get('has_vip', False)
+
+            if not has_vip:
+                return await self._create_vip_required_menu()
+
+            items = [
+                MenuItem(
+                    id="recompensas_semanales", text="📅 Semanales", action_type=ActionType.CALLBACK,
+                    action_data="show_weekly_rewards", description="Recompensas semanales VIP",
+                    required_role=UserRole.FREE_USER, required_vip=True, icon="📅"
+                ),
+                MenuItem(
+                    id="boost_worthiness", text="💫 Boost Worthiness", action_type=ActionType.CALLBACK,
+                    action_data="apply_worthiness_boost", description="Potencia tu worthiness",
+                    required_role=UserRole.FREE_USER, required_vip=True, icon="💫"
+                ),
+                MenuItem(
+                    id="recompensas_exclusivas", text="✨ Exclusivas", action_type=ActionType.CALLBACK,
+                    action_data="show_exclusive_rewards", description="Recompensas solo para VIP",
+                    required_role=UserRole.FREE_USER, required_vip=True, icon="✨"
+                ),
+                MenuItem(
+                    id="historial_recompensas", text="📋 Historial", action_type=ActionType.CALLBACK,
+                    action_data="show_rewards_history", description="Historial de recompensas",
+                    required_role=UserRole.FREE_USER, required_vip=True, icon="📋"
+                )
+            ]
+
+            menu = Menu(
+                menu_id="rewards_menu", title="🏆 Recompensas VIP",
+                description="Recompensas exclusivas para miembros VIP",
+                menu_type=MenuType.GAMIFICATION, required_role=UserRole.FREE_USER, items=items,
+                header_text="<b>🏆 Centro de Recompensas VIP</b>\nRecompensas exclusivas para tu sophistication",
+                parent_menu_id="main_menu"
+            )
+
+            self._log_menu_creation("rewards_menu", user_id, True)
+            return menu
+
+        except Exception as e:
+            self._log_menu_creation("rewards_menu", user_context.get('user_id', 'unknown'), False, str(e))
+            raise MenuGenerationError(f"Failed to build rewards menu: {str(e)}")
+
+    async def _create_vip_required_menu(self) -> Menu:
+        """Create VIP required menu."""
+        return Menu(
+            menu_id="vip_required", title="🚫 Acceso VIP Requerido",
+            description="Esta función requiere membresía VIP",
+            menu_type=MenuType.GAMIFICATION, required_role=UserRole.FREE_USER,
+            items=[
+                MenuItem(
+                    id="get_vip", text="🌟 Obtener VIP", action_type=ActionType.CALLBACK,
+                    action_data="show_vip_benefits", description="Descubre los beneficios VIP",
+                    required_role=UserRole.FREE_USER, icon="🌟"
+                )
+            ],
+            header_text="<b>🚫 Función VIP</b>\nEsta función está disponible solo para miembros VIP",
+            parent_menu_id="main_menu"
+        )
+
+
+class RankingMenuBuilder(MenuBuilder):
+    """Builder for VIP ranking menu system."""
+
+    async def build_menu(self, user_context: Dict[str, Any], **kwargs) -> Menu:
+        """Build VIP ranking menu."""
+        try:
+            user_context = self._validate_user_context(user_context)
+            user_id = user_context.get('user_id', 'unknown')
+            has_vip = user_context.get('has_vip', False)
+
+            if not has_vip:
+                return await self._create_vip_required_menu()
+
+            items = [
+                MenuItem(
+                    id="ranking_worthiness", text="💫 Ranking Worthiness", action_type=ActionType.CALLBACK,
+                    action_data="show_worthiness_ranking", description="Los más sofisticados",
+                    required_role=UserRole.FREE_USER, required_vip=True, icon="💫"
+                ),
+                MenuItem(
+                    id="ranking_besitos", text="💋 Ranking Besitos", action_type=ActionType.CALLBACK,
+                    action_data="show_besitos_ranking", description="Los más prósperos",
+                    required_role=UserRole.FREE_USER, required_vip=True, icon="💋"
+                ),
+                MenuItem(
+                    id="mi_posicion", text="📍 Mi Posición", action_type=ActionType.CALLBACK,
+                    action_data="show_my_ranking_position", description="Tu posición actual",
+                    required_role=UserRole.FREE_USER, required_vip=True, icon="📍"
+                ),
+                MenuItem(
+                    id="competencias", text="🏆 Competencias", action_type=ActionType.CALLBACK,
+                    action_data="show_competitions", description="Competencias activas",
+                    required_role=UserRole.FREE_USER, required_vip=True, icon="🏆"
+                )
+            ]
+
+            menu = Menu(
+                menu_id="ranking_menu", title="📊 Ranking VIP",
+                description="Compite con otros usuarios VIP",
+                menu_type=MenuType.GAMIFICATION, required_role=UserRole.FREE_USER, items=items,
+                header_text="<b>📊 Ranking de Sophistication</b>\nCompite con los usuarios más distinguidos",
+                parent_menu_id="main_menu"
+            )
+
+            self._log_menu_creation("ranking_menu", user_id, True)
+            return menu
+
+        except Exception as e:
+            self._log_menu_creation("ranking_menu", user_context.get('user_id', 'unknown'), False, str(e))
+            raise MenuGenerationError(f"Failed to build ranking menu: {str(e)}")
+
+    async def _create_vip_required_menu(self) -> Menu:
+        """Create VIP required menu."""
+        return Menu(
+            menu_id="vip_required", title="🚫 Acceso VIP Requerido",
+            description="Esta función requiere membresía VIP",
+            menu_type=MenuType.GAMIFICATION, required_role=UserRole.FREE_USER,
+            items=[
+                MenuItem(
+                    id="get_vip", text="🌟 Obtener VIP", action_type=ActionType.CALLBACK,
+                    action_data="show_vip_benefits", description="Descubre los beneficios VIP",
+                    required_role=UserRole.FREE_USER, icon="🌟"
+                )
+            ],
+            header_text="<b>🚫 Función VIP</b>\nEsta función está disponible solo para miembros VIP",
+            parent_menu_id="main_menu"
+        )
+
+
+class AuctionsMenuBuilder(MenuBuilder):
+    """Builder for VIP auctions menu system."""
+
+    async def build_menu(self, user_context: Dict[str, Any], **kwargs) -> Menu:
+        """Build VIP auctions menu."""
+        try:
+            user_context = self._validate_user_context(user_context)
+            user_id = user_context.get('user_id', 'unknown')
+            has_vip = user_context.get('has_vip', False)
+            besitos = user_context.get('besitos', 0)
+
+            if not has_vip:
+                return await self._create_vip_required_menu()
+
+            items = [
+                MenuItem(
+                    id="subastas_activas", text="🔥 Activas", action_type=ActionType.CALLBACK,
+                    action_data="show_active_auctions", description="Subastas en curso",
+                    required_role=UserRole.FREE_USER, required_vip=True, icon="🔥"
+                ),
+                MenuItem(
+                    id="mis_pujas", text="💰 Mis Pujas", action_type=ActionType.CALLBACK,
+                    action_data="show_my_bids", description="Tus pujas actuales",
+                    required_role=UserRole.FREE_USER, required_vip=True, icon="💰"
+                ),
+                MenuItem(
+                    id="subastas_ganadas", text="🏆 Ganadas", action_type=ActionType.CALLBACK,
+                    action_data="show_won_auctions", description="Subastas que has ganado",
+                    required_role=UserRole.FREE_USER, required_vip=True, icon="🏆"
+                ),
+                MenuItem(
+                    id="historial_subastas", text="📋 Historial", action_type=ActionType.CALLBACK,
+                    action_data="show_auction_history", description="Historial completo",
+                    required_role=UserRole.FREE_USER, required_vip=True, icon="📋"
+                )
+            ]
+
+            menu = Menu(
+                menu_id="auctions_menu", title="💎 Subastas VIP",
+                description="Participa en subastas exclusivas",
+                menu_type=MenuType.GAMIFICATION, required_role=UserRole.FREE_USER, items=items,
+                header_text=f"<b>💎 Casa de Subastas VIP</b>\n💋 Tus Besitos: {besitos}",
+                footer_text="<i>Solo los tesoros más exclusivos llegan aquí</i>",
+                parent_menu_id="main_menu"
+            )
+
+            self._log_menu_creation("auctions_menu", user_id, True)
+            return menu
+
+        except Exception as e:
+            self._log_menu_creation("auctions_menu", user_context.get('user_id', 'unknown'), False, str(e))
+            raise MenuGenerationError(f"Failed to build auctions menu: {str(e)}")
+
+    async def _create_vip_required_menu(self) -> Menu:
+        """Create VIP required menu."""
+        return Menu(
+            menu_id="vip_required", title="🚫 Acceso VIP Requerido",
+            description="Esta función requiere membresía VIP",
+            menu_type=MenuType.GAMIFICATION, required_role=UserRole.FREE_USER,
+            items=[
+                MenuItem(
+                    id="get_vip", text="🌟 Obtener VIP", action_type=ActionType.CALLBACK,
+                    action_data="show_vip_benefits", description="Descubre los beneficios VIP",
+                    required_role=UserRole.FREE_USER, icon="🌟"
+                )
+            ],
+            header_text="<b>🚫 Función VIP</b>\nEsta función está disponible solo para miembros VIP",
+            parent_menu_id="main_menu"
+        )
+
+
+class DivanMenuBuilder(MenuBuilder):
+    """Builder for VIP Diván menu system."""
+
+    async def build_menu(self, user_context: Dict[str, Any], **kwargs) -> Menu:
+        """Build VIP Diván menu."""
+        try:
+            user_context = self._validate_user_context(user_context)
+            user_id = user_context.get('user_id', 'unknown')
+            has_vip = user_context.get('has_vip', False)
+            worthiness = user_context.get('worthiness', 0.0)
+
+            if not has_vip or worthiness < 7.0:
+                return await self._create_divan_access_denied_menu(has_vip, worthiness)
+
+            items = [
+                MenuItem(
+                    id="conversacion_intima", text="💬 Conversación Íntima", action_type=ActionType.CALLBACK,
+                    action_data="start_intimate_conversation", description="Diálogo profundo con Lucien",
+                    required_role=UserRole.FREE_USER, required_vip=True, required_worthiness=7.0, icon="💬"
+                ),
+                MenuItem(
+                    id="experiencias_personalizadas", text="🎨 Experiencias Personalizadas", action_type=ActionType.SUBMENU,
+                    action_data="divan_experiences_menu", description="Experiencias únicas para tu sophistication",
+                    required_role=UserRole.FREE_USER, required_vip=True, required_worthiness=7.0, icon="🎨"
+                ),
+                MenuItem(
+                    id="biblioteca_secreta", text="📚 Biblioteca Secreta", action_type=ActionType.CALLBACK,
+                    action_data="access_secret_library", description="Conocimientos reservados",
+                    required_role=UserRole.FREE_USER, required_vip=True, required_worthiness=7.0, icon="📚"
+                ),
+                MenuItem(
+                    id="evaluacion_detallada", text="📊 Evaluación Detallada", action_type=ActionType.CALLBACK,
+                    action_data="detailed_worthiness_evaluation", description="Análisis completo de tu sophistication",
+                    required_role=UserRole.FREE_USER, required_vip=True, required_worthiness=7.0, icon="📊"
+                )
+            ]
+
+            menu = Menu(
+                menu_id="divan_menu", title="🛋️ Mi Diván",
+                description="Tu espacio íntimo de comprensión profunda",
+                menu_type=MenuType.VIP, required_role=UserRole.FREE_USER, items=items,
+                header_text=f"<b>🛋️ El Diván de la Sophistication</b>\nWorthiness: {worthiness:.2f}/10.0",
+                footer_text="<i>Un privilegio ganado a través de la evolución personal</i>",
+                parent_menu_id="main_menu"
+            )
+
+            self._log_menu_creation("divan_menu", user_id, True)
+            return menu
+
+        except Exception as e:
+            self._log_menu_creation("divan_menu", user_context.get('user_id', 'unknown'), False, str(e))
+            raise MenuGenerationError(f"Failed to build divan menu: {str(e)}")
+
+    async def _create_divan_access_denied_menu(self, has_vip: bool, worthiness: float) -> Menu:
+        """Create access denied menu for Diván."""
+        if not has_vip:
+            message = "El Diván requiere membresía VIP y worthiness excepcional"
+            items = [
+                MenuItem(
+                    id="get_vip", text="🌟 Obtener VIP", action_type=ActionType.CALLBACK,
+                    action_data="show_vip_benefits", description="Primer paso hacia el Diván",
+                    required_role=UserRole.FREE_USER, icon="🌟"
+                )
+            ]
+        else:
+            message = f"Worthiness insuficiente: {worthiness:.2f}/7.0"
+            items = [
+                MenuItem(
+                    id="improve_worthiness", text="📈 Mejorar Worthiness", action_type=ActionType.CALLBACK,
+                    action_data="worthiness_improvement_guide", description="Guía para elevar tu sophistication",
+                    required_role=UserRole.FREE_USER, icon="📈"
+                )
+            ]
+
+        return Menu(
+            menu_id="divan_access_denied", title="🚫 Acceso al Diván Denegado",
+            description=message,
+            menu_type=MenuType.VIP, required_role=UserRole.FREE_USER, items=items,
+            header_text=f"<b>🚫 {message}</b>",
+            parent_menu_id="main_menu"
+        )
+
+
 class VIPMenuBuilder(MenuBuilder):
     """Builder for VIP exclusive menu system."""
 
@@ -1127,17 +1689,29 @@ class MenuFactory:
         """
         self.user_service = user_service
         self.builders = {
-            MenuType.MAIN: MainMenuBuilder(user_service),  # Use organic main menu builder
+            MenuType.MAIN: MainMenuBuilder(user_service),
             MenuType.NARRATIVE: NarrativeMenuBuilder(),
             MenuType.ADMIN: AdminMenuBuilder(),
             MenuType.VIP: VIPMenuBuilder(),
-            MenuType.STORE: MainMenuBuilder(user_service),  # Use organic main menu builder for store too
-            MenuType.GAMIFICATION: MainMenuBuilder(user_service),
-            MenuType.PROFILE: MainMenuBuilder(user_service),
+            MenuType.STORE: TiendaMenuBuilder(),
+            MenuType.GAMIFICATION: MisionesMenuBuilder(),
+            MenuType.PROFILE: ProfileMenuBuilder(),
             MenuType.EMOTIONAL: MainMenuBuilder(user_service),
             MenuType.DIANA: MainMenuBuilder(user_service),
             MenuType.SETTINGS: MainMenuBuilder(user_service),
             MenuType.HELP: MainMenuBuilder(user_service)
+        }
+
+        # Additional specific menu builders
+        self.specific_builders = {
+            "mochila_menu": MochilaMenuBuilder(),
+            "misiones_menu": MisionesMenuBuilder(),
+            "tienda_menu": TiendaMenuBuilder(),
+            "profile_menu": ProfileMenuBuilder(),
+            "rewards_menu": RewardsMenuBuilder(),
+            "ranking_menu": RankingMenuBuilder(),
+            "auctions_menu": AuctionsMenuBuilder(),
+            "divan_menu": DivanMenuBuilder()
         }
 
         self.menu_definitions = self._initialize_menu_definitions()
@@ -1206,14 +1780,24 @@ class MenuFactory:
         else:
             return await self.create_menu(MenuType.STORE, user_context)
 
-    def create_menu_by_id(self, menu_id: str, user_context: Dict[str, Any]) -> Optional[Menu]:
-        """Create menu by specific ID using organic system."""
+    async def create_menu_by_id(self, menu_id: str, user_context: Dict[str, Any]) -> Optional[Menu]:
+        """Create menu by specific ID using the appropriate builder."""
+        # Check specific builders first
+        if menu_id in self.specific_builders:
+            return await self.specific_builders[menu_id].build_menu(user_context)
+
+        # Check menu definitions
         if menu_id in self.menu_definitions:
             return self._create_organic_menu_from_definition(menu_id, user_context)
+
+        # Special cases
         elif menu_id == "organic_store_menu":
             main_builder = self.builders[MenuType.STORE]
             if hasattr(main_builder, 'build_organic_store_menu'):
                 return main_builder.build_organic_store_menu(user_context)
+            else:
+                return await main_builder.build_menu(user_context)
+
         return None
 
     def _create_organic_menu_from_definition(self, menu_id: str, user_context: Dict[str, Any]) -> Menu:
