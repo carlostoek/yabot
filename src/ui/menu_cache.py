@@ -303,8 +303,13 @@ class MenuCacheOptimizer:
 
         try:
             from src.ui.menu_factory import MenuFactory
-
+            from src.services.user import UserService
+            from src.database.manager import DatabaseManager
+            from src.events.bus import EventBus
+            
             # Initialize menu factory for pre-generation
+            # For cache warming, we'll use a minimal UserService instance
+            # In a real implementation, this would use dependency injection
             menu_factory = MenuFactory()
 
             for config in menu_configs:
@@ -316,7 +321,14 @@ class MenuCacheOptimizer:
                     for user_context in user_contexts:
                         # Generate menu
                         start_time = time.time()
-                        menu = await menu_factory.generate_menu(menu_id, user_context)
+                        # Convert menu_id to MenuType if it's a known type, otherwise use as string
+                        from src.ui.menu_config import MenuType
+                        try:
+                            menu_type = MenuType(menu_id)
+                        except ValueError:
+                            menu_type = menu_id
+                        
+                        menu = await menu_factory.create_menu(menu_type, user_context)
                         generation_time = time.time() - start_time
 
                         if menu:
