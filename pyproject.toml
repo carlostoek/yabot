@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yabot"
+version = "0.1.0"
+description = "Yet Another Telegram Bot Framework using Aiogram 3"
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "aiogram>=3.5.0",
+    "pydantic>=2.6.4",
+    "pydantic-settings>=2.2.1",
+    "structlog>=24.1.0",
+    "python-dotenv>=1.0.1",
+    "aiohttp>=3.9.5",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/yourusername/yabot"
+"Bug Reports" = "https://github.com/yourusername/yabot/issues"
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = ["-v", "--tb=short"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
