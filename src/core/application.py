@@ -45,6 +45,9 @@ class BotApplication:
         self.dispatcher: Optional[Dispatcher] = None
         self.webhook_handler: Optional[WebhookHandler] = None
         self.fastapi_app: Optional[FastAPI] = None
+        self.api_server = None
+        self.database_manager = None
+        self.event_bus = None
         
         # Application state
         self.is_running = False
@@ -187,7 +190,59 @@ class BotApplication:
                 error_type=type(e).__name__
             )
             return False
-    
+
+    async def _setup_database(self) -> None:
+        """Initialize database connections with connection pooling"""
+        from src.database.manager import get_database_manager
+        self.database_manager = get_database_manager()
+        
+        # Initialize both databases
+        if not await self.database_manager.initialize_databases():
+            raise RuntimeError("Failed to initialize databases")
+        
+        self.logger.info("Database connections initialized successfully")
+
+    async def _setup_event_bus(self) -> None:
+        """Initialize Redis event bus with local fallback queue"""
+        from src.events.bus import EventBus
+        from src.config.manager import get_config_manager
+        
+        config = get_config_manager()
+        redis_config = config.get_redis_config()
+        
+        self.event_bus = EventBus(redis_config=redis_config)
+        await self.event_bus.connect()
+        
+        self.logger.info("Event bus initialized successfully")
+
+    async def _setup_api_server(self) -> None:
+        """Initialize FastAPI server with Aiogram 3 integration"""
+        from src.api.server import create_api_server
+
+        # Create API server with database and event bus dependencies
+        self.api_server = create_api_server(
+            database_manager=self.database_manager,
+            event_bus=self.event_bus
+        )
+
+        # API server startup events are handled by FastAPI internally
+
+    async def _setup_aiogram_dispatcher(self) -> None:
+        """Setup Aiogram 3 dispatcher with database context middleware"""
+        from src.core.middleware import DatabaseMiddleware
+
+        # Register middleware for dependency injection (Requirement 5.1.4)
+        if self.database_manager:
+            db_middleware = DatabaseMiddleware(self.database_manager, self.event_bus)
+            self.dispatcher.message.middleware(db_middleware)
+            self.dispatcher.callback_query.middleware(db_middleware)
+            self.dispatcher.inline_query.middleware(db_middleware)
+            self.dispatcher.chosen_inline_result.middleware(db_middleware)
+
+        # Include routers with database services
+        from src.handlers import main_router
+        self.dispatcher.include_router(main_router)
+
     async def start(self) -> None:
         """
         Start the bot application.
@@ -203,6 +258,18 @@ class BotApplication:
             raise RuntimeError("Bot application not initialized")
         
         try:
+            # 1. Initialize database connections first (Requirement 5.1.1)
+            await self._setup_database()
+
+            # 2. Initialize event bus
+            await self._setup_event_bus()
+
+            # 3. Initialize API server
+            await self._setup_api_server()
+
+            # 4. Setup Aiogram 3 components with dependency injection
+            await self._setup_aiogram_dispatcher()
+            
             # Import config manager to avoid circular import
             from src.config.manager import get_config_manager
             config_manager = get_config_manager()

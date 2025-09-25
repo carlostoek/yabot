@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from dotenv import load_dotenv
 
 # Import the models from the core module
-from src.core.models import BotConfig, WebhookConfig, LoggingConfig
+from src.core.models import BotConfig, WebhookConfig, LoggingConfig, DatabaseConfig, RedisConfig, APIConfig
 
 
 class ConfigManager:
@@ -31,6 +31,9 @@ class ConfigManager:
         self.bot_config = self._load_bot_config()
         self.webhook_config = self._load_webhook_config()
         self.logging_config = self._load_logging_config()
+        self.database_config = self._load_database_config()
+        self.redis_config = self._load_redis_config()
+        self.api_config = self._load_api_config()
         
         # Validate all configurations
         self.validate_config()
@@ -90,10 +93,14 @@ class ConfigManager:
         Load logging configuration from environment variables
         """
         try:
+            file_path = os.getenv("LOG_FILE_PATH")
+            if os.getenv("PYTEST_RUNNING"):
+                file_path = None
+
             logging_config = LoggingConfig(
                 level=os.getenv("LOG_LEVEL", "INFO"),
                 format=os.getenv("LOG_FORMAT", "json"),
-                file_path=os.getenv("LOG_FILE_PATH"),
+                file_path=file_path,
                 max_file_size=int(os.getenv("LOG_MAX_FILE_SIZE", "10485760")),  # 10MB
                 backup_count=int(os.getenv("LOG_BACKUP_COUNT", "5"))
             )
@@ -103,6 +110,78 @@ class ConfigManager:
             raise
         except Exception as e:
             logging.error(f"Error loading logging configuration: {e}")
+            raise
+    
+    def _load_database_config(self) -> DatabaseConfig:
+        """
+        Load database configuration from environment variables
+        """
+        try:
+            database_config = DatabaseConfig(
+                mongodb_uri=os.getenv("MONGODB_URI", "mongodb://localhost:27017"),
+                mongodb_database=os.getenv("MONGODB_DATABASE", "yabot"),
+                sqlite_database_path=os.getenv("SQLITE_DATABASE_PATH", "./yabot.db"),
+                pool_size=int(os.getenv("SQLITE_POOL_SIZE", "20")),
+                max_overflow=int(os.getenv("SQLITE_MAX_OVERFLOW", "30")),
+                pool_timeout=int(os.getenv("SQLITE_POOL_TIMEOUT", "10")),
+                pool_recycle=int(os.getenv("SQLITE_POOL_RECYCLE", "3600")),  # 1 hour
+                mongodb_min_pool_size=int(os.getenv("MONGODB_MIN_POOL_SIZE", "5")),
+                mongodb_max_pool_size=int(os.getenv("MONGODB_MAX_POOL_SIZE", "50")),
+                mongodb_max_idle_time=int(os.getenv("MONGODB_MAX_IDLE_TIME", "30000")),  # 30 seconds
+                mongodb_server_selection_timeout=int(os.getenv("MONGODB_SERVER_SELECTION_TIMEOUT", "5000")),  # 5 seconds
+                mongodb_socket_timeout=int(os.getenv("MONGODB_SOCKET_TIMEOUT", "10000"))  # 10 seconds
+            )
+            return database_config
+        except ValidationError as e:
+            logging.error(f"Error validating database configuration: {e}")
+            raise
+        except Exception as e:
+            logging.error(f"Error loading database configuration: {e}")
+            raise
+    
+    def _load_redis_config(self) -> RedisConfig:
+        """
+        Load Redis configuration from environment variables
+        """
+        try:
+            redis_config = RedisConfig(
+                url=os.getenv("REDIS_URL", "redis://localhost:6379"),
+                password=os.getenv("REDIS_PASSWORD"),
+                max_connections=int(os.getenv("REDIS_MAX_CONNECTIONS", "50")),
+                retry_on_timeout=os.getenv("REDIS_RETRY_ON_TIMEOUT", "true").lower() in ("true", "1", "yes"),
+                socket_connect_timeout=int(os.getenv("REDIS_SOCKET_CONNECT_TIMEOUT", "5")),
+                socket_timeout=int(os.getenv("REDIS_SOCKET_TIMEOUT", "10")),
+                local_queue_max_size=int(os.getenv("REDIS_LOCAL_QUEUE_MAX_SIZE", "1000")),
+                local_queue_persistence_file=os.getenv("REDIS_LOCAL_QUEUE_PERSISTENCE_FILE", "event_queue.pkl")
+            )
+            return redis_config
+        except ValidationError as e:
+            logging.error(f"Error validating Redis configuration: {e}")
+            raise
+        except Exception as e:
+            logging.error(f"Error loading Redis configuration: {e}")
+            raise
+    
+    def _load_api_config(self) -> APIConfig:
+        """
+        Load internal API configuration from environment variables
+        """
+        try:
+            api_config = APIConfig(
+                host=os.getenv("API_HOST", "localhost"),
+                port=int(os.getenv("API_PORT", "8001")),
+                workers=int(os.getenv("API_WORKERS", "1")),
+                ssl_cert=os.getenv("API_SSL_CERT"),
+                ssl_key=os.getenv("API_SSL_KEY"),
+                access_token_expire_minutes=int(os.getenv("API_ACCESS_TOKEN_EXPIRE_MINUTES", "15")),
+                refresh_token_expire_days=int(os.getenv("API_REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+            )
+            return api_config
+        except ValidationError as e:
+            logging.error(f"Error validating API configuration: {e}")
+            raise
+        except Exception as e:
+            logging.error(f"Error loading API configuration: {e}")
             raise
     
     def get_bot_token(self) -> str:
@@ -123,6 +202,24 @@ class ConfigManager:
         """
         return self.logging_config
     
+    def get_database_config(self) -> DatabaseConfig:
+        """
+        Get database configuration
+        """
+        return self.database_config
+    
+    def get_redis_config(self) -> RedisConfig:
+        """
+        Get Redis configuration
+        """
+        return self.redis_config
+    
+    def get_api_config(self) -> APIConfig:
+        """
+        Get internal API configuration
+        """
+        return self.api_config
+    
     def validate_config(self) -> bool:
         """
         Validate all configuration parameters
@@ -137,6 +234,18 @@ class ConfigManager:
         if self.webhook_config:
             if not self.webhook_config.url:
                 errors.append("WEBHOOK_URL is required when webhook is enabled")
+        
+        # Validate database configuration
+        if not self.database_config.mongodb_uri:
+            errors.append("MONGODB_URI is required")
+        if not self.database_config.mongodb_database:
+            errors.append("MONGODB_DATABASE is required")
+        if not self.database_config.sqlite_database_path:
+            errors.append("SQLITE_DATABASE_PATH is required")
+        
+        # Validate Redis configuration
+        if not self.redis_config.url:
+            errors.append("REDIS_URL is required")
         
         # Log any validation errors
         if errors:
@@ -157,6 +266,22 @@ class ConfigManager:
         Get the current operation mode (polling or webhook)
         """
         return "webhook" if self.is_webhook_mode() else "polling"
+    
+    def has_database_config(self) -> bool:
+        """
+        Check if database configuration is available
+        """
+        return (
+            bool(self.database_config.mongodb_uri) and 
+            bool(self.database_config.mongodb_database) and 
+            bool(self.database_config.sqlite_database_path)
+        )
+    
+    def has_redis_config(self) -> bool:
+        """
+        Check if Redis configuration is available
+        """
+        return bool(self.redis_config.url)
 
 
 # Singleton instance

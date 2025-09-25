@@ -4,6 +4,9 @@ Core Bot Framework - Command Handlers
 This module contains handlers for basic commands like /start, /menu, and /help.
 Each handler extends the BaseHandler class and implements the required functionality 
 according to the specification requirements.
+
+Enhanced to integrate with database context and event publishing as per
+Requirement 5.3: Handler Integration and Event Publishing.
 """
 from aiogram import Router
 from aiogram.types import Message
@@ -14,6 +17,10 @@ from aiogram.types import InlineKeyboardButton
 from src.handlers.base import BaseHandler, MessageHandlerMixin
 from src.core.models import MessageContext, CommandResponse
 from src.utils.logger import get_logger
+from src.database.manager import DatabaseManager
+from src.events.bus import EventBus
+from src.services.user import UserService
+from src.events.models import UserInteractionEvent, UserRegistrationEvent
 
 
 class StartCommandHandler(BaseHandler, MessageHandlerMixin):
@@ -22,15 +29,52 @@ class StartCommandHandler(BaseHandler, MessageHandlerMixin):
     
     Implements requirement 2.1: WHEN a user sends /start command THEN the bot 
     SHALL respond with a welcome message and basic usage instructions
+    Implements requirement 5.3: WHEN a user sends /start command THEN CommandHandler 
+    SHALL publish user_interaction event
     """
+    
+    def __init__(self):
+        super().__init__()
+        # Initialize database context
+        from src.config.manager import get_config_manager
+        config_manager = get_config_manager()
+        self.db_manager = DatabaseManager(config_manager.get_database_config().dict())
+        self.event_bus = EventBus(config_manager.get_redis_config())
+        self.user_service = UserService(self.db_manager, self.event_bus)
     
     async def process_message(self, message: Message, context: MessageContext, **kwargs) -> CommandResponse:
         """Process the /start command"""
+        user_id = str(message.from_user.id)
+        
+        # Check if user exists, create if not
+        user_exists = await self.db_manager.get_user_from_mongo(user_id)
+        if not user_exists:
+            # Create user in database
+            telegram_user_data = {
+                "id": message.from_user.id,
+                "username": message.from_user.username,
+                "first_name": message.from_user.first_name,
+                "last_name": message.from_user.last_name,
+                "language_code": message.from_user.language_code,
+            }
+            
+            await self.user_service.create_user(telegram_user_data)
+        
         welcome_text = (
             "👋 Hello! Welcome to the bot.\n\n"
             "I'm here to help you with various tasks. "
             "Use /menu to see available options or /help for more information."
         )
+        
+        # Publish user interaction event
+        interaction_event = UserInteractionEvent(
+            event_id=f"start_{user_id}_{int(__import__('time').time())}",
+            user_id=user_id,
+            action="start",
+            context={"command": "/start", "username": message.from_user.username},
+            source="command_handler"
+        )
+        await self.event_bus.publish(interaction_event)
         
         # Create and return the response
         response = self.create_response(text=welcome_text)

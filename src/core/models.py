@@ -42,6 +42,52 @@ class LoggingConfig(BaseModel):
     backup_count: int = 5
 
 
+class DatabaseConfig(BaseModel):
+    """
+    Configuration model for database connections
+    """
+    mongodb_uri: str = "mongodb://localhost:27017"
+    mongodb_database: str = "yabot"
+    sqlite_database_path: str = "./yabot.db"
+    pool_size: int = 20
+    max_overflow: int = 30
+    pool_timeout: int = 10
+    pool_recycle: int = 3600  # 1 hour
+    # MongoDB specific configuration
+    mongodb_min_pool_size: int = 5
+    mongodb_max_pool_size: int = 50
+    mongodb_max_idle_time: int = 30000  # 30 seconds
+    mongodb_server_selection_timeout: int = 5000  # 5 seconds
+    mongodb_socket_timeout: int = 10000  # 10 seconds
+
+
+class RedisConfig(BaseModel):
+    """
+    Configuration model for Redis connection
+    """
+    url: str = "redis://localhost:6379"
+    password: Optional[str] = None
+    max_connections: int = 50
+    retry_on_timeout: bool = True
+    socket_connect_timeout: int = 5
+    socket_timeout: int = 10
+    local_queue_max_size: int = 1000
+    local_queue_persistence_file: str = "event_queue.pkl"
+
+
+class APIConfig(BaseModel):
+    """
+    Configuration model for internal API server
+    """
+    host: str = "localhost"
+    port: int = 8001
+    workers: int = 1
+    ssl_cert: Optional[str] = None
+    ssl_key: Optional[str] = None
+    access_token_expire_minutes: int = 15
+    refresh_token_expire_days: int = 7
+
+
 class CommandResponse(BaseModel):
     """
     Model for command responses

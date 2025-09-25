@@ -10,7 +10,7 @@ from aiogram.filters import Command, CommandStart
 from aiogram.handlers import MessageHandler, CallbackQueryHandler
 
 from src.utils.logger import get_logger
-from src.utils.errors import error_handler
+from src.utils.errors import handle_error
 from src.core.models import BotCommand
 
 
@@ -64,7 +64,7 @@ class RouterManager:
                     error=str(e),
                     error_type=type(e).__name__
                 )
-                error_handler.handle(e, {
+                handle_error(e, {
                     'command': command,
                     'user_id': message.from_user.id,
                     'chat_id': message.chat.id
@@ -93,7 +93,7 @@ class RouterManager:
                     error_type=type(e).__name__,
                     filter=str(filter_func)
                 )
-                error_handler.handle(e, {
+                handle_error(e, {
                     'filter': str(filter_func),
                     'user_id': message.from_user.id,
                     'chat_id': message.chat.id
@@ -121,7 +121,7 @@ class RouterManager:
                     error=str(e),
                     error_type=type(e).__name__
                 )
-                error_handler.handle(e, {
+                handle_error(e, {
                     'pattern': pattern,
                     'user_id': callback_query.from_user.id,
                     'chat_id': callback_query.message.chat.id if callback_query.message else 'unknown'

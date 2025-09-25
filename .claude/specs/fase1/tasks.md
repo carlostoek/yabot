@@ -414,7 +414,7 @@ Each task meets these criteria for optimal agent execution:
 
 ### 11. Testing Infrastructure
 
-- [ ] 34. Create database test utilities in tests/utils/database.py
+- [x] 34. Create database test utilities in tests/utils/database.py
   - File: tests/utils/database.py (create new)
   - Implement test database setup, fixtures, and cleanup utilities
   - Add MongoDB and SQLite test database management
@@ -422,7 +422,7 @@ Each task meets these criteria for optimal agent execution:
   - _Leverage: tests/conftest.py (existing test patterns)_
   - _Requirements: Testing Strategy_
 
-- [ ] 35. Create event bus test utilities in tests/utils/events.py
+- [x] 35. Create event bus test utilities in tests/utils/events.py
   - File: tests/utils/events.py (create new)
   - Implement mock EventBus and test event utilities
   - Add event testing helpers and verification methods

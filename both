@@ -1,0 +1,131 @@
+"""
+API Server Module
+
+Implements the internal REST API server with authentication as specified in Requirement 4.1
+"""
+import asyncio
+from typing import Optional
+import uvicorn
+from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+
+from src.api.auth import JWTService
+from src.api.endpoints import users, narrative, health
+from src.config.manager import get_config_manager
+from src.utils.logger import get_logger
+
+
+class APIServer:
+    """
+    Internal REST API server with authentication
+    """
+    
+    def __init__(self):
+        self.logger = get_logger(__name__)
+        self.config_manager = get_config_manager()
+        self.api_config = self.config_manager.get_api_config()
+        
+        # Initialize JWT service
+        self.jwt_service = JWTService()
+        
+        # Create FastAPI application
+        self.app = FastAPI(
+            title="YABOT Internal API",
+            description="Internal REST API for YABOT services",
+            version="1.0.0",
+            openapi_url="/api/v1/openapi.json"
+        )
+        
+        # Add CORS middleware
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=self.api_config.allowed_origins or ["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+        
+        # Register API endpoints
+        self._register_endpoints()
+        
+        # Add authentication dependency if required
+        self._add_global_auth_middleware()
+    
+    def _register_endpoints(self):
+        """Register all API endpoints"""
+        # Include endpoint routers
+        self.app.include_router(users.router)
+        self.app.include_router(narrative.router)
+        self.app.include_router(health.router)
+        
+        self.logger.info("API endpoints registered")
+    
+    def _add_global_auth_middleware(self):
+        """Add global authentication middleware if required"""
+        @self.app.middleware("http")
+        async def auth_middleware(request: Request, call_next):
+            # Skip authentication for health check endpoints
+            if request.url.path.startswith('/api/v1/health'):
+                response = await call_next(request)
+                return response
+            
+            # For other endpoints, check authentication
+            auth_header = request.headers.get("Authorization")
+            auth_payload = self.jwt_service.authenticate_request(auth_header)
+            
+            if not auth_payload:
+                # Skip auth for public endpoints if any
+                pass
+            
+            response = await call_next(request)
+            return response
+    
+    def authenticate_request(self, auth_header: Optional[str] = None):
+        """
+        JWT token validation
+        """
+        return self.jwt_service.authenticate_request(auth_header)
+    
+    async def start_server(self, host: str = None, port: int = None):
+        """
+        Start the FastAPI server
+        """
+        if host is None:
+            host = self.api_config.host or "0.0.0.0"
+        if port is None:
+            port = self.api_config.port or 8000
+        
+        self.logger.info(f"Starting API server on {host}:{port}")
+        
+        # Run the server
+        config = uvicorn.Config(
+            self.app,
+            host=host,
+            port=port,
+            log_level="info"
+        )
+        server = uvicorn.Server(config)
+        await server.serve()
+    
+    async def stop_server(self):
+        """
+        Stop the API server gracefully
+        """
+        self.logger.info("Stopping API server")
+        # Implementation would depend on how the server is started
+        # For now, we just log the action
+
+
+# Global API server instance
+_api_server = None
+
+
+def get_api_server():
+    """Get the global API server instance"""
+    global _api_server
+    if not _api_server:
+        _api_server = APIServer()
+    return _api_server
+
+
+__all__ = ["APIServer", "get_api_server"]

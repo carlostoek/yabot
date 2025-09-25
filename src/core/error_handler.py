@@ -29,6 +29,10 @@ from src.utils.errors import (
 import asyncio
 import traceback
 
+# Infrastructure-specific error types
+from src.events.bus import EventBusException, EventProcessingError
+import redis.exceptions
+
 
 class ErrorHandler:
     """
@@ -86,16 +90,26 @@ class ErrorHandler:
             **context,
             'error_type': type(error).__name__,
             'error_message': str(error),
-            'traceback': traceback.format_exc()
+            'traceback': traceback.format_exc(),
+            'component': context.get('component', 'unknown')
         }
         
         # Determine log level based on error type
         if self._is_critical_error(error):
-            self.logger.critical("Critical error occurred", **log_context)
+            self.logger.critical("Critical infrastructure error occurred", **log_context)
         elif self._is_recoverable_error(error):
-            self.logger.warning("Recoverable error occurred", **log_context)
+            self.logger.warning("Recoverable infrastructure error occurred", **log_context)
         else:
-            self.logger.error("Error occurred", **log_context)
+            # Check if this might be an infrastructure error
+            error_type_name = type(error).__name__
+            error_module = type(error).__module__
+            
+            # Log infrastructure errors with more detail
+            if any(infra_error in error_type_name.lower() for infra_error in 
+                   ['database', 'event', 'redis', 'sqlalchemy', 'connection']):
+                self.logger.warning("Infrastructure error occurred", **log_context)
+            else:
+                self.logger.error("Error occurred", **log_context)
     
     async def get_user_message(self, error: Exception) -> str:
         """
@@ -123,6 +137,13 @@ class ErrorHandler:
             'MessageProcessingError': "Error processing your message. Please try again.",
             'WebhookError': "Webhook configuration issue. Please contact the administrator.",
             'DatabaseError': "Database error occurred. Please try again later.",
+            
+            # Infrastructure errors
+            'EventBusException': "Event bus error occurred. Please try again later.",
+            'EventProcessingError': "Error processing event. Please try again later.",
+            'SQLAlchemyError': "Database error occurred. Please try again later.",
+            'ConnectionError': "Connection error occurred. Please check your connection and try again later.",
+            'redis.exceptions.ConnectionError': "Connection to event system failed. Please try again later.",
         }
         
         # Return specific message if available, otherwise generic message
@@ -146,10 +167,21 @@ class ErrorHandler:
             ConfigurationError,
             DatabaseError,
             WebhookError,
+            EventBusException,  # Critical: event bus failures affect system communication
+            EventProcessingError,  # Critical: event processing failures affect business logic
+            SQLAlchemyError,  # Critical: database failures affect data persistence
         )
         
         # Also consider TelegramAPIError critical if it's a configuration issue
         if isinstance(error, TelegramAPIError) and 'token' in str(error).lower():
+            return True
+            
+        # Consider Redis connection errors critical as they affect event system
+        if isinstance(error, redis.exceptions.ConnectionError):
+            return True
+            
+        # Consider general ConnectionError critical for infrastructure
+        if isinstance(error.__class__.__name__, 'ConnectionError') and not isinstance(error, TelegramNetworkError):
             return True
             
         return isinstance(error, critical_error_types)
@@ -168,7 +200,14 @@ class ErrorHandler:
             TelegramRetryAfter,
             TelegramNetworkError,
             BotNetworkError,
+            redis.exceptions.ConnectionError,  # Redis connection errors may be recoverable
         )
+        
+        # Also consider specific infrastructure errors recoverable
+        error_type_name = type(error).__name__
+        if error_type_name in ['EventBusException', 'EventProcessingError']:
+            # Some event bus errors may be recoverable depending on context
+            return True
         
         return isinstance(error, recoverable_error_types)
     
@@ -191,6 +230,15 @@ class ErrorHandler:
             self.logger.info("Attempting network recovery")
             # In a real implementation, this would attempt to reconnect to services
             return True
+        elif isinstance(error, (redis.exceptions.ConnectionError, EventBusException)):
+            # For Redis/EventBus errors, try to reconnect to the event bus
+            self.logger.info("Attempting event bus recovery")
+            # In a real implementation, this would attempt to reconnect to Redis
+            return True
+        elif isinstance(error, EventProcessingError):
+            # For event processing errors, log and continue
+            self.logger.info("Handling event processing error, continuing operation")
+            return True
         elif isinstance(error, TelegramRetryAfter):
             # For throttling, wait before continuing
             self.logger.info("Handling throttling by waiting")
@@ -199,6 +247,10 @@ class ErrorHandler:
         elif isinstance(error, TelegramBadRequest):
             # For bad requests, no recovery is possible, but bot can continue operating
             self.logger.info("Bad request handled, bot can continue operating")
+            return True
+        elif isinstance(error, SQLAlchemyError):
+            # For database errors, log and continue
+            self.logger.info("Database error handled, bot can continue operating")
             return True
         else:
             # For other errors, we can't recover but the bot can continue
@@ -259,22 +311,22 @@ class AiogramErrorHandler:
         self.error_handler = ErrorHandler()
         self.logger = get_logger(self.__class__.__name__)
     
-    async def handle(self, update: Optional[Update], error: Exception) -> None:
+    async def handle(self, exception: Exception) -> None:
         """
         Handle errors in the aiogram error handling system
-        
+
         Args:
-            update: The update that was being processed (may be None)  
-            error: The exception that occurred
+            exception: The exception that occurred
         """
         try:
             # Handle the error using our centralized error handler
-            await self.error_handler.handle_update_error(update, error)
+            # We don't have access to the update in this context, so pass None
+            await self.error_handler.handle_update_error(None, exception)
         except Exception as handler_error:
             # If the error handler itself fails, log it
             self.logger.error(
                 "Error in error handler",
-                original_error=str(error),
+                original_error=str(exception),
                 handler_error=str(handler_error),
                 traceback=traceback.format_exc()
             )

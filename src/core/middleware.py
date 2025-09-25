@@ -3,9 +3,9 @@ Core Bot Framework - Middleware Manager
 
 This module manages request/response processing pipeline for cross-cutting concerns.
 """
-from typing import List, Callable, Any, Awaitable, Union
+from typing import List, Callable, Any, Awaitable, Union, Dict
 from aiogram import BaseMiddleware
-from aiogram.types import Update, Message, CallbackQuery
+from aiogram.types import Update, Message, CallbackQuery, TelegramObject
 # HandlerObject is not used in the code, removing the unused import
 from src.utils.logger import get_logger
 from src.utils.errors import error_handler
@@ -258,6 +258,35 @@ class ThrottlingMiddleware(BaseMiddleware):
     def _get_timestamp(self) -> str:
         from datetime import datetime
         return datetime.now().isoformat()
+
+
+class DatabaseMiddleware(BaseMiddleware):
+    """
+    Aiogram 3 middleware for database context injection
+    Implements Requirement 5.1.4: WHEN middleware processes requests THEN it SHALL have access to database services through dependency injection
+    """
+
+    def __init__(self, database_manager, event_bus=None):
+        super().__init__()
+        self.database_manager = database_manager
+        self.event_bus = event_bus
+
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: Dict[str, Any]
+    ) -> Any:
+        # Inject database services into handler data (Requirement 5.1.4)
+        data["database_manager"] = self.database_manager
+
+        # Add user service for easy access if event_bus is available
+        if self.event_bus:
+            from src.services.user import UserService
+            data["user_service"] = UserService(self.database_manager, self.event_bus)
+
+        # Call next handler in chain
+        return await handler(event, data)
 
 
 # Create a default instance of the middleware manager
