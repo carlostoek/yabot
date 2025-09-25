@@ -10,7 +10,6 @@ from typing import Optional, Dict, Any, List
 from enum import Enum
 
 from src.database.manager import DatabaseManager
-from src.events.bus import EventBus
 from src.events.models import SubscriptionUpdatedEvent
 from src.utils.logger import LoggerMixin, get_logger
 
@@ -35,13 +34,12 @@ class SubscriptionService(LoggerMixin):
     Manages user subscription operations
     """
     
-    def __init__(self, db_manager: DatabaseManager, event_bus: EventBus):
+    def __init__(self, db_manager: DatabaseManager):
         self.db_manager = db_manager
-        self.event_bus = event_bus
         # LoggerMixin provides the logger property automatically
     
     async def create_subscription(self, user_id: str, plan_type: SubscriptionPlan, 
-                                duration_days: int = 30) -> Optional[Dict[str, Any]]:
+                                duration_days: int = 30, **kwargs) -> Optional[Dict[str, Any]]:
         """
         Create a new subscription for a user
         
@@ -53,6 +51,7 @@ class SubscriptionService(LoggerMixin):
         Returns:
             Created subscription data or None if creation failed
         """
+        event_bus = kwargs.get('event_bus')
         try:
             self.logger.info("Creating subscription", user_id=user_id, plan=plan_type)
             
@@ -73,13 +72,14 @@ class SubscriptionService(LoggerMixin):
             
             if result:
                 # Publish subscription created event
-                event = SubscriptionUpdatedEvent(
-                    user_id=user_id,
-                    old_status="inactive",
-                    new_status=SubscriptionStatus.ACTIVE.value,
-                    plan_type=plan_type.value
-                )
-                await self.event_bus.publish("subscription_created", event.dict())
+                if event_bus:
+                    event = SubscriptionUpdatedEvent(
+                        user_id=user_id,
+                        old_status="inactive",
+                        new_status=SubscriptionStatus.ACTIVE.value,
+                        plan_type=plan_type.value
+                    )
+                    await event_bus.publish("subscription_created", event.dict())
                 
                 self.logger.info("Subscription created successfully", user_id=user_id)
                 return subscription_data
@@ -116,7 +116,7 @@ class SubscriptionService(LoggerMixin):
             self.logger.error(f"Error retrieving subscription: {str(e)}", user_id=user_id)
             raise
     
-    async def update_subscription_status(self, user_id: str, new_status: SubscriptionStatus) -> bool:
+    async def update_subscription_status(self, user_id: str, new_status: SubscriptionStatus, **kwargs) -> bool:
         """
         Update subscription status for a user
         
@@ -127,6 +127,7 @@ class SubscriptionService(LoggerMixin):
         Returns:
             True if update successful, False otherwise
         """
+        event_bus = kwargs.get('event_bus')
         try:
             self.logger.info("Updating subscription status", user_id=user_id, new_status=new_status)
             
@@ -144,13 +145,14 @@ class SubscriptionService(LoggerMixin):
             
             if result:
                 # Publish subscription updated event
-                event = SubscriptionUpdatedEvent(
-                    user_id=user_id,
-                    old_status=old_status,
-                    new_status=new_status.value,
-                    plan_type=current_sub.get("plan_type", "free") if current_sub else "free"
-                )
-                await self.event_bus.publish("subscription_updated", event.dict())
+                if event_bus:
+                    event = SubscriptionUpdatedEvent(
+                        user_id=user_id,
+                        old_status=old_status,
+                        new_status=new_status.value,
+                        plan_type=current_sub.get("plan_type", "free") if current_sub else "free"
+                    )
+                    await event_bus.publish("subscription_updated", event.dict())
                 
                 self.logger.info("Subscription status updated", user_id=user_id, new_status=new_status)
                 return True
@@ -207,7 +209,7 @@ class SubscriptionService(LoggerMixin):
             self.logger.error(f"Error checking subscription status: {str(e)}", user_id=user_id)
             raise
     
-    async def upgrade_subscription(self, user_id: str, new_plan: SubscriptionPlan) -> bool:
+    async def upgrade_subscription(self, user_id: str, new_plan: SubscriptionPlan, **kwargs) -> bool:
         """
         Upgrade user subscription to a new plan
         
@@ -218,6 +220,7 @@ class SubscriptionService(LoggerMixin):
         Returns:
             True if upgrade successful, False otherwise
         """
+        event_bus = kwargs.get('event_bus')
         try:
             self.logger.info("Upgrading subscription", user_id=user_id, new_plan=new_plan)
             
@@ -228,7 +231,7 @@ class SubscriptionService(LoggerMixin):
             
             if not current_sub:
                 # Create new subscription if none exists
-                return await self.create_subscription(user_id, new_plan)
+                return await self.create_subscription(user_id, new_plan, **kwargs)
             
             # Update subscription plan
             update_data = {
@@ -241,13 +244,14 @@ class SubscriptionService(LoggerMixin):
             
             if result:
                 # Publish subscription updated event
-                event = SubscriptionUpdatedEvent(
-                    user_id=user_id,
-                    old_status=old_status,
-                    new_status=SubscriptionStatus.ACTIVE.value,
-                    plan_type=new_plan.value
-                )
-                await self.event_bus.publish("subscription_upgraded", event.dict())
+                if event_bus:
+                    event = SubscriptionUpdatedEvent(
+                        user_id=user_id,
+                        old_status=old_status,
+                        new_status=SubscriptionStatus.ACTIVE.value,
+                        plan_type=new_plan.value
+                    )
+                    await event_bus.publish("subscription_upgraded", event.dict())
                 
                 self.logger.info("Subscription upgraded", user_id=user_id, old_plan=old_plan, new_plan=new_plan)
                 return True

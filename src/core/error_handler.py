@@ -30,7 +30,7 @@ import asyncio
 import traceback
 
 # Infrastructure-specific error types
-from src.events.bus import EventBusException, EventProcessingError
+from src.events.exceptions import EventBusException, EventProcessingError
 import redis.exceptions
 
 

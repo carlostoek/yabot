@@ -13,7 +13,6 @@ from enum import Enum
 from src.services.user import UserService
 from src.services.subscription import SubscriptionService
 from src.services.narrative import NarrativeService
-from src.events.bus import EventBus
 from src.events.models import BaseEvent, UserInteractionEvent, ReactionDetectedEvent
 from src.utils.logger import LoggerMixin, get_logger
 
@@ -32,15 +31,14 @@ class CoordinatorService(LoggerMixin):
     """
     
     def __init__(self, user_service: UserService, subscription_service: SubscriptionService,
-                 narrative_service: NarrativeService, event_bus: EventBus):
+                 narrative_service: NarrativeService):
         self.user_service = user_service
         self.subscription_service = subscription_service
         self.narrative_service = narrative_service
-        self.event_bus = event_bus
         # LoggerMixin provides the logger property automatically
         self.event_buffer = {}  # Buffer for event ordering by user
     
-    async def process_user_interaction(self, user_id: str, action: str) -> Dict[str, Any]:
+    async def process_user_interaction(self, user_id: str, action: str, **kwargs) -> Dict[str, Any]:
         """
         Handle user interaction workflows
         
@@ -51,6 +49,7 @@ class CoordinatorService(LoggerMixin):
         Returns:
             Result of the interaction processing
         """
+        event_bus = kwargs.get('event_bus')
         try:
             self.logger.info("Processing user interaction", user_id=user_id, action=action)
             
@@ -77,12 +76,13 @@ class CoordinatorService(LoggerMixin):
                 result = {"status": "handled", "action": action, "user_id": user_id}
             
             # Publish interaction processed event
-            await self.event_bus.publish("user_interaction_processed", {
-                "user_id": user_id,
-                "action": action,
-                "result": result,
-                "processed_at": datetime.utcnow()
-            })
+            if event_bus:
+                await event_bus.publish("user_interaction_processed", {
+                    "user_id": user_id,
+                    "action": action,
+                    "result": result,
+                    "processed_at": datetime.utcnow()
+                })
             
             self.logger.info("User interaction processed successfully", user_id=user_id, action=action)
             return result
@@ -125,7 +125,7 @@ class CoordinatorService(LoggerMixin):
     
     async def process_besitos_transaction(self, user_id: str, amount: int, 
                                         transaction_type: BesitosTransactionType, 
-                                        description: str = "") -> bool:
+                                        description: str = "", **kwargs) -> bool:
         """
         Handle virtual currency transactions with atomicity
         
@@ -138,6 +138,7 @@ class CoordinatorService(LoggerMixin):
         Returns:
             True if transaction successful, False otherwise
         """
+        event_bus = kwargs.get('event_bus')
         try:
             self.logger.info("Processing besitos transaction", user_id=user_id, amount=amount, type=transaction_type)
             
@@ -153,7 +154,8 @@ class CoordinatorService(LoggerMixin):
             }
             
             # Publish besitos transaction event
-            await self.event_bus.publish("besitos_transaction", transaction_data)
+            if event_bus:
+                await event_bus.publish("besitos_transaction", transaction_data)
             
             self.logger.info("Besitos transaction processed", user_id=user_id, amount=amount, type=transaction_type)
             return True
@@ -190,13 +192,14 @@ class CoordinatorService(LoggerMixin):
             self.logger.error(f"Error adding event to buffer: {str(e)}", user_id=user_id, event_type=event.event_type)
             raise
     
-    async def _process_user_event_buffer(self, user_id: str) -> None:
+    async def _process_user_event_buffer(self, user_id: str, **kwargs) -> None:
         """
         Process events in the buffer to maintain chronological order
         
         Args:
             user_id: Telegram user ID
         """
+        event_bus = kwargs.get('event_bus')
         try:
             if user_id not in self.event_buffer:
                 return
@@ -214,7 +217,8 @@ class CoordinatorService(LoggerMixin):
                     event = event_entry["event"]
                     
                     # Process the event (publish it)
-                    await self.event_bus.publish(event.event_type, event.dict())
+                    if event_bus:
+                        await event_bus.publish(event.event_type, event.dict())
                     
                     # Mark as processed
                     event_entry["processed"] = True
@@ -228,7 +232,7 @@ class CoordinatorService(LoggerMixin):
             self.logger.error(f"Error processing user event buffer: {str(e)}", user_id=user_id)
             raise
     
-    async def process_reaction(self, user_id: str, content_id: str, reaction_type: str) -> bool:
+    async def process_reaction(self, user_id: str, content_id: str, reaction_type: str, **kwargs) -> bool:
         """
         Process a user's reaction to content
         
@@ -240,6 +244,7 @@ class CoordinatorService(LoggerMixin):
         Returns:
             True if processing successful, False otherwise
         """
+        event_bus = kwargs.get('event_bus')
         try:
             self.logger.info("Processing reaction", user_id=user_id, content_id=content_id, reaction_type=reaction_type)
             
@@ -261,7 +266,7 @@ class CoordinatorService(LoggerMixin):
                     user_id, 
                     1, 
                     BesitosTransactionType.REWARD,
-                    f"Reward for {reaction_type} reaction to content {content_id}"
+                    f"Reward for {reaction_type} reaction to content {content_id}", **kwargs
                 )
             
             # Publish reaction processed event
@@ -271,7 +276,8 @@ class CoordinatorService(LoggerMixin):
                 "reaction_type": reaction_type,
                 "awarded_besitos": reaction_type in positive_reactions
             }
-            await self.event_bus.publish("reaction_processed", result_data)
+            if event_bus:
+                await event_bus.publish("reaction_processed", result_data)
             
             self.logger.info("Reaction processed", user_id=user_id, content_id=content_id, reaction_type=reaction_type)
             return True

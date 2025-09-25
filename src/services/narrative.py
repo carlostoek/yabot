@@ -11,7 +11,6 @@ from enum import Enum
 
 from src.database.manager import DatabaseManager
 from src.services.subscription import SubscriptionService
-from src.events.bus import EventBus
 from src.events.models import ContentViewedEvent, DecisionMadeEvent
 from src.utils.logger import LoggerMixin, get_logger
 
@@ -37,10 +36,9 @@ class NarrativeService(LoggerMixin):
     Manages narrative content operations
     """
     
-    def __init__(self, db_manager: DatabaseManager, subscription_service: SubscriptionService, event_bus: EventBus):
+    def __init__(self, db_manager: DatabaseManager, subscription_service: SubscriptionService):
         self.db_manager = db_manager
         self.subscription_service = subscription_service
-        self.event_bus = event_bus
         # LoggerMixin provides the logger property automatically
     
     async def get_narrative_fragment(self, fragment_id: str) -> Optional[Dict[str, Any]]:
@@ -95,7 +93,7 @@ class NarrativeService(LoggerMixin):
             raise
     
     async def update_user_narrative_progress(self, user_id: str, fragment_id: str, 
-                                           choice_id: str = None) -> bool:
+                                           choice_id: str = None, **kwargs) -> bool:
         """
         Update user's narrative progress
         
@@ -107,6 +105,7 @@ class NarrativeService(LoggerMixin):
         Returns:
             True if update successful, False otherwise
         """
+        event_bus = kwargs.get('event_bus')
         try:
             self.logger.info("Updating user narrative progress", user_id=user_id, fragment_id=fragment_id)
             
@@ -149,14 +148,14 @@ class NarrativeService(LoggerMixin):
                 self.logger.info("User narrative progress updated", user_id=user_id)
                 
                 # Publish decision made event if choice was made
-                if choice_id:
+                if choice_id and event_bus:
                     event = DecisionMadeEvent(
                         user_id=user_id,
                         choice_id=choice_id,
                         fragment_id=fragment_id,
                         next_fragment_id=fragment_id  # This would come from the choice mapping
                     )
-                    await self.event_bus.publish("decision_made", event.dict())
+                    await event_bus.publish("decision_made", event.dict())
                 
                 return True
             else:
@@ -261,7 +260,7 @@ class NarrativeService(LoggerMixin):
             self.logger.error(f"Error retrieving related fragments: {str(e)}", fragment_id=fragment_id)
             raise
     
-    async def track_content_view(self, user_id: str, content_id: str, content_type: str) -> bool:
+    async def track_content_view(self, user_id: str, content_id: str, content_type: str, **kwargs) -> bool:
         """
         Track when a user views content
         
@@ -273,16 +272,18 @@ class NarrativeService(LoggerMixin):
         Returns:
             True if tracking successful, False otherwise
         """
+        event_bus = kwargs.get('event_bus')
         try:
             self.logger.info("Tracking content view", user_id=user_id, content_id=content_id)
             
             # Publish content viewed event
-            event = ContentViewedEvent(
-                user_id=user_id,
-                content_id=content_id,
-                content_type=content_type
-            )
-            await self.event_bus.publish("content_viewed", event.dict())
+            if event_bus:
+                event = ContentViewedEvent(
+                    user_id=user_id,
+                    content_id=content_id,
+                    content_type=content_type
+                )
+                await event_bus.publish("content_viewed", event.dict())
             
             # Update user's content view history in MongoDB
             update_data = {

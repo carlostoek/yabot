@@ -18,21 +18,14 @@ import redis.asyncio as redis
 from redis.exceptions import ConnectionError, TimeoutError
 
 # Import models and logger
+from src.core.models import RedisConfig
 from .models import BaseEvent, EventStatus
 from src.utils.logger import get_logger
-from typing import Dict, Any
 
 logger = get_logger(__name__)
 
 
-class EventBusException(Exception):
-    """Exception class for event bus related errors"""
-    pass
-
-
-class EventProcessingError(Exception):
-    """Exception class for event processing errors"""
-    pass
+from .exceptions import EventBusException, EventProcessingError
 
 
 class LocalEventQueue:
@@ -221,24 +214,22 @@ class EventBus:
     """
     Main event bus implementation with Redis and local fallback
     """
-    def __init__(self, redis_config: dict = None):
+    def __init__(self, redis_config: Optional[RedisConfig] = None):
         # Use default config if none provided
         if redis_config is None:
-            self.config = {
-                'url': 'redis://localhost:6379',
-                'password': None,
-                'max_connections': 50,
-                'retry_on_timeout': True,
-                'socket_connect_timeout': 5,
-                'socket_timeout': 10,
-                'local_queue_max_size': 1000,
-                'local_queue_persistence_file': 'event_queue.pkl'
-            }
+            self.redis_config = RedisConfig(
+                url='redis://localhost:6379',
+                password=None,
+                max_connections=50,
+                retry_on_timeout=True,
+                socket_connect_timeout=5,
+                socket_timeout=10,
+                local_queue_max_size=1000,
+                local_queue_persistence_file='event_queue.pkl'
+            )
         else:
             # Use provided config
-            self.config = redis_config
-        
-        self.redis_config = self.config
+            self.redis_config = redis_config
         
         # Initialize Redis connection
         self.redis_url = self.redis_config.url
@@ -512,11 +503,7 @@ class EventBus:
                 'redis_connected': redis_connected,
                 'local_queue_size': local_queue_size,
                 'connected': self._connected,
-                'stats': self.stats.copy(),
-                # Additional keys expected by tests
-                'redis_healthy': redis_connected,
-                'overall_healthy': redis_connected or local_queue_size > 0,
-                'local_queue': local_queue_size
+                **self.stats,
             }
             
             logger.debug("Event bus health check completed", health_status=health_status)

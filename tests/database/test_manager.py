@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 from src.database.manager import DatabaseManager
-from tests.utils.database import mock_database_manager, sample_telegram_user
+
 
 
 class TestDatabaseManagerInitialization:

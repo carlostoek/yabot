@@ -11,7 +11,6 @@ from typing import Optional, Dict, Any, List
 from enum import Enum
 
 from src.database.manager import DatabaseManager
-from src.events.bus import EventBus
 from src.events.models import UserRegistrationEvent, UserInteractionEvent
 from src.utils.logger import LoggerMixin, get_logger
 
@@ -28,12 +27,11 @@ class UserService(LoggerMixin):
     Unified user data operations across MongoDB and SQLite
     """
     
-    def __init__(self, db_manager: DatabaseManager, event_bus: EventBus):
+    def __init__(self, db_manager: DatabaseManager):
         self.db_manager = db_manager
-        self.event_bus = event_bus
         # LoggerMixin provides the logger property automatically
         
-    async def create_user(self, telegram_user: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def create_user(self, telegram_user: Dict[str, Any], **kwargs) -> Optional[Dict[str, Any]]:
         """
         Create user in both databases atomically
         
@@ -43,6 +41,7 @@ class UserService(LoggerMixin):
         Returns:
             Created user data or None if creation failed
         """
+        event_bus = kwargs.get('event_bus')
         try:
             self.logger.info("Creating new user", user_id=telegram_user.get("id"))
             
@@ -92,11 +91,12 @@ class UserService(LoggerMixin):
             
             if result:
                 # Publish user registration event
-                event = UserRegistrationEvent(
-                    user_id=user_id,
-                    telegram_data=telegram_user
-                )
-                await self.event_bus.publish("user_registered", event.dict())
+                if event_bus:
+                    event = UserRegistrationEvent(
+                        user_id=user_id,
+                        telegram_data=telegram_user
+                    )
+                    await event_bus.publish("user_registered", event.dict())
                 
                 self.logger.info("User created successfully", user_id=user_id)
                 return {
@@ -156,7 +156,7 @@ class UserService(LoggerMixin):
             self.logger.error(f"Error retrieving user context: {str(e)}", user_id=user_id)
             raise
     
-    async def update_user_state(self, user_id: str, new_state: Dict[str, Any]) -> bool:
+    async def update_user_state(self, user_id: str, new_state: Dict[str, Any], **kwargs) -> bool:
         """
         Update MongoDB dynamic state
         
@@ -167,6 +167,7 @@ class UserService(LoggerMixin):
         Returns:
             True if update successful, False otherwise
         """
+        event_bus = kwargs.get('event_bus')
         try:
             self.logger.info("Updating user state", user_id=user_id)
             
@@ -181,12 +182,13 @@ class UserService(LoggerMixin):
             
             if result:
                 # Publish user state update event
-                event = UserInteractionEvent(
-                    user_id=user_id,
-                    action="update_state",
-                    context=new_state
-                )
-                await self.event_bus.publish("user_state_updated", event.dict())
+                if event_bus:
+                    event = UserInteractionEvent(
+                        user_id=user_id,
+                        action="update_state",
+                        context=new_state
+                    )
+                    await event_bus.publish("user_state_updated", event.dict())
                 
                 self.logger.info("User state updated successfully", user_id=user_id)
                 return True
@@ -252,7 +254,7 @@ class UserService(LoggerMixin):
             self.logger.error(f"Error retrieving subscription status: {str(e)}", user_id=user_id)
             raise
     
-    async def delete_user(self, user_id: str) -> bool:
+    async def delete_user(self, user_id: str, **kwargs) -> bool:
         """
         Remove user from both databases and publish user_deleted event
         
@@ -262,6 +264,7 @@ class UserService(LoggerMixin):
         Returns:
             True if deletion successful, False otherwise
         """
+        event_bus = kwargs.get('event_bus')
         try:
             self.logger.info("Deleting user", user_id=user_id)
             
@@ -271,12 +274,13 @@ class UserService(LoggerMixin):
             
             if mongo_deleted and sqlite_deleted:
                 # Publish user deletion event
-                event_data = {
-                    "event_type": "user_deleted",
-                    "user_id": user_id,
-                    "timestamp": datetime.utcnow(),
-                }
-                await self.event_bus.publish("user_deleted", event_data)
+                if event_bus:
+                    event_data = {
+                        "event_type": "user_deleted",
+                        "user_id": user_id,
+                        "timestamp": datetime.utcnow(),
+                    }
+                    await event_bus.publish("user_deleted", event_data)
                 
                 self.logger.info("User deleted successfully", user_id=user_id)
                 return True

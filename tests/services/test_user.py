@@ -13,12 +13,53 @@ from typing import Dict, Any, Optional
 from src.services.user import UserService, UserStatus
 from src.database.manager import DatabaseManager
 from src.events.bus import EventBus
+
 from src.events.models import UserRegistrationEvent, UserInteractionEvent
-from tests.utils.database import TestDataGenerator, mock_database_manager, sample_telegram_user
-from tests.utils.events import event_data_generator, mock_redis_client
+
+
+class TestDataGenerator:
+    @staticmethod
+    def generate_telegram_user() -> Dict[str, Any]:
+        return {
+            "id": 123456789,
+            "is_bot": False,
+            "first_name": "Test",
+            "last_name": "User",
+            "username": "testuser",
+            "language_code": "en",
+        }
+
+    @staticmethod
+    def generate_user_mongo_doc(user_id: str) -> Dict[str, Any]:
+        return {
+            "user_id": user_id,
+            "current_state": {
+                "menu_context": "main_menu",
+                "narrative_progress": {},
+                "session_data": {},
+            },
+            "preferences": {},
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        }
+
+    @staticmethod
+    def generate_user_sqlite_profile(user_id: str, telegram_user: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "user_id": user_id,
+            "telegram_user_id": telegram_user["id"],
+            "username": telegram_user.get("username"),
+            "first_name": telegram_user.get("first_name"),
+            "last_name": telegram_user.get("last_name"),
+            "language_code": telegram_user.get("language_code"),
+            "registration_date": datetime.utcnow(),
+            "last_login": datetime.utcnow(),
+            "is_active": True,
+        }
 
 
 class TestUserService:
+
     """Unit tests for UserService class"""
 
     @pytest.fixture
@@ -48,7 +89,7 @@ class TestUserService:
     @pytest.fixture
     def user_service(self, mock_db_manager, mock_event_bus) -> UserService:
         """Create UserService instance with mocked dependencies"""
-        return UserService(mock_db_manager, mock_event_bus)
+        return UserService(mock_db_manager)
 
     @pytest.fixture
     def sample_telegram_user(self) -> Dict[str, Any]:

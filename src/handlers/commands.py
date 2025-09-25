@@ -18,7 +18,6 @@ from src.handlers.base import BaseHandler, MessageHandlerMixin
 from src.core.models import MessageContext, CommandResponse
 from src.utils.logger import get_logger
 from src.database.manager import DatabaseManager
-from src.events.bus import EventBus
 from src.services.user import UserService
 from src.events.models import UserInteractionEvent, UserRegistrationEvent
 
@@ -35,19 +34,28 @@ class StartCommandHandler(BaseHandler, MessageHandlerMixin):
     
     def __init__(self):
         super().__init__()
-        # Initialize database context
-        from src.config.manager import get_config_manager
-        config_manager = get_config_manager()
-        self.db_manager = DatabaseManager(config_manager.get_database_config().dict())
-        self.event_bus = EventBus(config_manager.get_redis_config())
-        self.user_service = UserService(self.db_manager, self.event_bus)
+        # Services will be injected via middleware, not instantiated directly
     
     async def process_message(self, message: Message, context: MessageContext, **kwargs) -> CommandResponse:
         """Process the /start command"""
+        # Extract data from kwargs (injected via middleware)
+        from src.events.bus import EventBus
+        data = kwargs.get('data', {})
+        database_manager = data.get('database_manager')
+        user_service = data.get('user_service')
+        event_bus = data.get('event_bus')
+        
+        # Ensure services are available
+        if not database_manager or not user_service:
+            self.logger.error("Required services not available in data")
+            error_response = self.create_response(text="Internal error occurred")
+            await self.send_response(message, error_response)
+            return error_response
+        
         user_id = str(message.from_user.id)
         
         # Check if user exists, create if not
-        user_exists = await self.db_manager.get_user_from_mongo(user_id)
+        user_exists = await database_manager.get_user_from_mongo(user_id)
         if not user_exists:
             # Create user in database
             telegram_user_data = {
@@ -58,7 +66,7 @@ class StartCommandHandler(BaseHandler, MessageHandlerMixin):
                 "language_code": message.from_user.language_code,
             }
             
-            await self.user_service.create_user(telegram_user_data)
+            await user_service.create_user(telegram_user_data)
         
         welcome_text = (
             "👋 Hello! Welcome to the bot.\n\n"
@@ -67,14 +75,15 @@ class StartCommandHandler(BaseHandler, MessageHandlerMixin):
         )
         
         # Publish user interaction event
-        interaction_event = UserInteractionEvent(
-            event_id=f"start_{user_id}_{int(__import__('time').time())}",
-            user_id=user_id,
-            action="start",
-            context={"command": "/start", "username": message.from_user.username},
-            source="command_handler"
-        )
-        await self.event_bus.publish(interaction_event)
+        if event_bus:
+            interaction_event = UserInteractionEvent(
+                event_id=f"start_{user_id}_{int(__import__('time').time())}",
+                user_id=user_id,
+                action="start",
+                context={"command": "/start", "username": message.from_user.username},
+                source="command_handler"
+            )
+            await event_bus.publish(interaction_event)
         
         # Create and return the response
         response = self.create_response(text=welcome_text)
@@ -90,8 +99,17 @@ class MenuCommandHandler(BaseHandler, MessageHandlerMixin):
     SHALL display the main menu with available options
     """
     
+    def __init__(self):
+        super().__init__()
+        # Services will be injected via middleware, not instantiated directly
+    
     async def process_message(self, message: Message, context: MessageContext, **kwargs) -> CommandResponse:
         """Process the /menu command"""
+        # Extract data from kwargs (injected via middleware)
+        data = kwargs.get('data', {})
+        database_manager = data.get('database_manager')
+        user_service = data.get('user_service')
+        
         # Create an inline keyboard with menu options
         keyboard = InlineKeyboardBuilder()
         
@@ -119,8 +137,17 @@ class HelpCommandHandler(BaseHandler, MessageHandlerMixin):
     Handler for the /help command.
     """
     
+    def __init__(self):
+        super().__init__()
+        # Services will be injected via middleware, not instantiated directly
+    
     async def process_message(self, message: Message, context: MessageContext, **kwargs) -> CommandResponse:
         """Process the /help command"""
+        # Extract data from kwargs (injected via middleware)
+        data = kwargs.get('data', {})
+        database_manager = data.get('database_manager')
+        user_service = data.get('user_service')
+        
         help_text = (
             "📖 <b>Bot Help</b>\n\n"
             "Available commands:\n"
@@ -144,8 +171,17 @@ class UnknownCommandHandler(BaseHandler, MessageHandlerMixin):
     THEN the bot SHALL respond with a helpful message explaining available commands
     """
     
+    def __init__(self):
+        super().__init__()
+        # Services will be injected via middleware, not instantiated directly
+    
     async def process_message(self, message: Message, context: MessageContext, **kwargs) -> CommandResponse:
         """Process unrecognized commands or messages"""
+        # Extract data from kwargs (injected via middleware)
+        data = kwargs.get('data', {})
+        database_manager = data.get('database_manager')
+        user_service = data.get('user_service')
+        
         # Check if message is a text command that's not recognized
         if hasattr(message, 'text') and message.text and message.text.startswith('/'):
             unknown_command = message.text.split()[0]
@@ -173,28 +209,28 @@ logger = get_logger(__name__)
 
 # Register the command handlers
 @router.message(CommandStart())
-async def handle_start_command(message: Message):
+async def handle_start_command(message: Message, **kwargs):
     """Handle the /start command"""
     handler = StartCommandHandler()
-    await handler.handle_message(message)
+    await handler.handle_message(message, **kwargs)
 
 
 @router.message(Command("menu"))
-async def handle_menu_command(message: Message):
+async def handle_menu_command(message: Message, **kwargs):
     """Handle the /menu command"""
     handler = MenuCommandHandler()
-    await handler.handle_message(message)
+    await handler.handle_message(message, **kwargs)
 
 
 @router.message(Command("help"))
-async def handle_help_command(message: Message):
+async def handle_help_command(message: Message, **kwargs):
     """Handle the /help command"""
     handler = HelpCommandHandler()
-    await handler.handle_message(message)
+    await handler.handle_message(message, **kwargs)
 
 
 @router.message()
-async def handle_unknown_command(message: Message):
+async def handle_unknown_command(message: Message, **kwargs):
     """Handle unknown commands and messages"""
     # Check if this is a command that should be handled by other handlers
     if hasattr(message, 'text') and message.text and message.text.startswith('/'):
@@ -202,11 +238,11 @@ async def handle_unknown_command(message: Message):
         known_commands = ['/start', '/menu', '/help']
         if not any(message.text.lower().startswith(cmd) for cmd in known_commands):
             handler = UnknownCommandHandler()
-            await handler.handle_message(message)
+            await handler.handle_message(message, **kwargs)
     else:
         # It's a regular message, treat as unknown command
         handler = UnknownCommandHandler()
-        await handler.handle_message(message)
+        await handler.handle_message(message, **kwargs)
 
 
 def register_handlers(dp):

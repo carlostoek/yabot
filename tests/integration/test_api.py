@@ -19,42 +19,16 @@ import json
 from src.api.server import create_api_server
 from src.database.manager import DatabaseManager
 from src.events.bus import EventBus
-from tests.utils.database import (
-    test_database, test_db_helpers, populated_test_database,
-    TestDataGenerator, DatabaseTestHelpers
-)
+
 
 
 class TestAPIUserEndpoints:
     """Test user-related API endpoints"""
 
-    @pytest.fixture
-    def api_client(self, populated_test_database):
-        """Create a test client for the API"""
-        # Create mock dependencies
-        db_manager = MagicMock(spec=DatabaseManager)
-        event_bus = MagicMock(spec=EventBus)
-        
-        # Setup database mocks
-        db_data = populated_test_database
-        test_user = db_data["users"][0] if db_data["users"] else None
-        
-        if test_user:
-            db_manager.get_user_from_mongo = AsyncMock(return_value=test_user["mongo_doc"])
-            db_manager.get_user_profile_from_sqlite = AsyncMock(return_value=test_user["sqlite_profile"])
-            db_manager.update_user_in_mongo = AsyncMock(return_value=True)
-        
-        # Create the API with dependencies
-        app = create_api_server(database_manager=db_manager, event_bus=event_bus)
-        
-        # Create test client
-        client = TestClient(app)
-        return client, db_manager
-
     @pytest.mark.asyncio
-    async def test_get_user_state_endpoint(self, populated_test_database):
+    async def test_get_user_state_endpoint(self, api_client, populated_test_database):
         """Test the GET /api/v1/user/{id}/state endpoint"""
-        client, db_manager = self.api_client(populated_test_database)
+        client, db_manager, _ = api_client
         
         test_user = populated_test_database["users"][0] if populated_test_database["users"] else None
         
@@ -110,9 +84,9 @@ class TestAPIUserEndpoints:
             assert data["current_state"]["menu_context"] == "main_menu"
 
     @pytest.mark.asyncio
-    async def test_get_user_state_not_found(self, populated_test_database):
+    async def test_get_user_state_not_found(self, api_client, populated_test_database):
         """Test the GET /api/v1/user/{id}/state endpoint with non-existent user"""
-        client, db_manager = self.api_client(populated_test_database)
+        client, db_manager, _ = api_client
         
         # Mock that user doesn't exist
         db_manager.get_user_from_mongo = AsyncMock(return_value=None)
@@ -125,9 +99,9 @@ class TestAPIUserEndpoints:
         assert "detail" in data
 
     @pytest.mark.asyncio
-    async def test_update_user_preferences_endpoint(self, populated_test_database):
+    async def test_update_user_preferences_endpoint(self, api_client, populated_test_database):
         """Test the PUT /api/v1/user/{id}/preferences endpoint"""
-        client, db_manager = self.api_client(populated_test_database)
+        client, db_manager, _ = api_client
         
         test_user = populated_test_database["users"][0] if populated_test_database["users"] else None
         
@@ -166,9 +140,9 @@ class TestAPIUserEndpoints:
             assert response.status_code in [200, 404]
 
     @pytest.mark.asyncio
-    async def test_get_user_subscription_endpoint(self, populated_test_database):
+    async def test_get_user_subscription_endpoint(self, api_client, populated_test_database):
         """Test the GET /api/v1/user/{id}/subscription endpoint"""
-        client, db_manager = self.api_client(populated_test_database)
+        client, db_manager, _ = api_client
         
         # Create mock subscription data
         test_user = populated_test_database["users"][0] if populated_test_database["users"] else None
@@ -220,9 +194,9 @@ class TestAPINarrativeEndpoints:
     """Test narrative-related API endpoints"""
 
     @pytest.mark.asyncio
-    async def test_get_narrative_content_endpoint(self, populated_test_database):
+    async def test_get_narrative_content_endpoint(self, api_client, populated_test_database):
         """Test the GET /api/v1/narrative/{fragment_id} endpoint"""
-        client, db_manager, user_service = self.api_client(populated_test_database)
+        client, db_manager, _ = api_client
         
         # Create mock narrative fragment
         mock_fragment = {
@@ -256,9 +230,9 @@ class TestAPINarrativeEndpoints:
         assert len(data["choices"]) == 2
 
     @pytest.mark.asyncio
-    async def test_get_narrative_not_found(self, populated_test_database):
+    async def test_get_narrative_not_found(self, api_client, populated_test_database):
         """Test the GET /api/v1/narrative/{fragment_id} endpoint with non-existent fragment"""
-        client, db_manager, user_service = self.api_client(populated_test_database)
+        client, db_manager, _ = api_client
         
         # Mock that narrative doesn't exist
         db_manager.get_narrative_from_mongo = AsyncMock(return_value=None)
@@ -274,9 +248,9 @@ class TestAPIAuthentication:
     """Test API authentication and authorization"""
 
     @pytest.mark.asyncio
-    async def test_api_authentication_required(self, populated_test_database):
+    async def test_api_authentication_required(self, api_client, populated_test_database):
         """Test that API endpoints require authentication"""
-        client, db_manager, user_service = self.api_client(populated_test_database)
+        client, db_manager, _ = api_client
         
         user_id = "123456789"
         
@@ -293,9 +267,9 @@ class TestAPIAuthentication:
         assert response.status_code in [200, 401, 403]
 
     @pytest.mark.asyncio
-    async def test_valid_jwt_token_authentication(self, populated_test_database):
+    async def test_valid_jwt_token_authentication(self, api_client, populated_test_database):
         """Test API with valid JWT token authentication"""
-        client, db_manager, user_service = self.api_client(populated_test_database)
+        client, db_manager, _ = api_client
         
         user_id = "123456789"
         
@@ -320,9 +294,9 @@ class TestAPIErrorHandling:
     """Test API error handling"""
 
     @pytest.mark.asyncio
-    async def test_api_error_response_format(self, populated_test_database):
+    async def test_api_error_response_format(self, api_client, populated_test_database):
         """Test that API returns consistent error responses"""
-        client, db_manager, user_service = self.api_client(populated_test_database)
+        client, db_manager, _ = api_client
         
         # Mock a database error
         db_manager.get_user_from_mongo = AsyncMock(side_effect=Exception("Database error"))
@@ -338,9 +312,9 @@ class TestAPIErrorHandling:
         assert "detail" in data or "error" in data
 
     @pytest.mark.asyncio
-    async def test_api_validation_error(self, populated_test_database):
+    async def test_api_validation_error(self, api_client, populated_test_database):
         """Test API validation error response"""
-        client, db_manager, user_service = self.api_client(populated_test_database)
+        client, db_manager, _ = api_client
         
         user_id = "123456789"
         
@@ -351,9 +325,9 @@ class TestAPIErrorHandling:
         assert response.status_code in [422, 400]
 
     @pytest.mark.asyncio
-    async def test_api_database_connection_error(self, populated_test_database):
+    async def test_api_database_connection_error(self, api_client, populated_test_database):
         """Test API behavior when database connection fails"""
-        client, db_manager, user_service = self.api_client(populated_test_database)
+        client, db_manager, _ = api_client
         
         # Mock database connection failure
         db_manager.get_user_from_mongo = AsyncMock(side_effect=ConnectionError("DB connection failed"))
@@ -368,9 +342,9 @@ class TestAPIPerformance:
     """Test API performance requirements"""
 
     @pytest.mark.asyncio
-    async def test_api_response_time_requirement(self, populated_test_database):
+    async def test_api_response_time_requirement(self, api_client, populated_test_database):
         """Test that API endpoints meet response time requirements"""
-        client, db_manager, user_service = self.api_client(populated_test_database)
+        client, db_manager, _ = api_client
         
         # Create mock user data
         user_id = "123456789"
@@ -403,9 +377,9 @@ class TestAPIPerformance:
         assert response.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_concurrent_api_requests(self, populated_test_database):
+    async def test_concurrent_api_requests(self, api_client, populated_test_database):
         """Test API performance under concurrent requests"""
-        client, db_manager, user_service = self.api_client(populated_test_database)
+        client, db_manager, _ = api_client
         
         # Create mock user data
         mock_user_state = {
@@ -430,12 +404,7 @@ class TestAPIPerformance:
         
         # Make concurrent requests
         tasks = [make_request(f"12345678{i}") for i in range(10)]
-        responses = [task for task in tasks]  # Since TestClient is synchronous
-        
-        # Execute requests sequentially for TestClient
-        responses = []
-        for task in tasks:
-            responses.append(task)
+        responses = await asyncio.gather(*tasks)
         
         end_time = time.time()
         total_time_ms = (end_time - start_time) * 1000
@@ -455,16 +424,9 @@ class TestAPIHealthAndMonitoring:
     """Test API health check and monitoring endpoints"""
 
     @pytest.mark.asyncio
-    async def test_api_health_endpoint(self, populated_test_database):
+    async def test_api_health_endpoint(self, api_client, populated_test_database):
         """Test the API health check endpoint"""
-        client, db_manager, user_service = self.api_client(populated_test_database)
-        
-        # Mock database health checks
-        db_manager.health_check = AsyncMock(return_value={
-            "mongo_connected": True,
-            "sqlite_connected": True,
-            "overall_healthy": True
-        })
+        client, db_manager, _ = api_client
         
         # For health endpoint, we need to add it to the API
         # Assuming the APIServer adds this automatically or manually
@@ -473,12 +435,12 @@ class TestAPIHealthAndMonitoring:
         # If health endpoint exists, it should return 200
         # If it doesn't exist, it might return 404
         # This depends on the actual API implementation
-        assert response.status_code in [200, 404] 
+        assert response.status_code in [200, 404]
 
     @pytest.mark.asyncio
-    async def test_api_database_integration_health(self, populated_test_database):
+    async def test_api_database_integration_health(self, api_client, populated_test_database):
         """Test API integration health with database services"""
-        client, db_manager, user_service = self.api_client(populated_test_database)
+        client, db_manager, _ = api_client
         
         # Test with healthy database connections
         test_user = populated_test_database["users"][0] if populated_test_database["users"] else None
@@ -502,9 +464,9 @@ class TestAPIEndpointSecurity:
     """Test API endpoint security"""
 
     @pytest.mark.asyncio
-    async def test_api_rate_limiting(self, populated_test_database):
+    async def test_api_rate_limiting(self, api_client, populated_test_database):
         """Test that API has rate limiting"""
-        client, db_manager, user_service = self.api_client(populated_test_database)
+        client, db_manager, _ = api_client
         
         # Create mock user data
         mock_user_state = {
@@ -535,9 +497,9 @@ class TestAPIEndpointSecurity:
         assert success_count >= 0  # At least some requests should succeed
 
     @pytest.mark.asyncio
-    async def test_api_input_validation(self, populated_test_database):
+    async def test_api_input_validation(self, api_client, populated_test_database):
         """Test API input validation against malicious inputs"""
-        client, db_manager, user_service = self.api_client(populated_test_database)
+        client, db_manager, _ = api_client
         
         # Test with very long user ID (potential SQL injection attempt)
         long_user_id = "1" * 1000  # 1000 character user ID
@@ -560,9 +522,9 @@ class TestAPIFullIntegration:
     """Full integration tests with actual (simulated) services"""
 
     @pytest.mark.asyncio
-    async def test_end_to_end_user_operations(self, populated_test_database):
+    async def test_end_to_end_user_operations(self, api_client, populated_test_database):
         """Test a sequence of user operations through the API"""
-        client, db_manager, user_service = self.api_client(populated_test_database)
+        client, db_manager, _ = api_client
         
         user_id = "test_user_987654321"
         

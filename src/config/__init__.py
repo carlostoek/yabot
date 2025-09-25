@@ -1,9 +1,2 @@
-"""
-Configuration module for the bot framework
-"""
+print("in src/config/__init__.py")
 from . import manager
-
-
-__all__ = [
-    'manager'
-]

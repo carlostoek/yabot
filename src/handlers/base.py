@@ -137,14 +137,14 @@ class BaseHandler(ABC):
     async def process_message(self, message: Message, context: MessageContext, **kwargs) -> Any:
         """
         Abstract method to process an incoming message.
-        
+
         This method must be implemented by subclasses to handle specific message types.
-        
+
         Args:
             message: The incoming message object
             context: The message context
-            **kwargs: Additional arguments
-            
+            **kwargs: Additional arguments, including 'data' from middleware
+
         Returns:
             Result of processing the message
         """
@@ -239,7 +239,7 @@ class BaseHandler(ABC):
             raise
     
     def create_response(self, text: str, parse_mode: Optional[str] = "HTML", 
-                       reply_markup: Optional[dict] = None, 
+                       reply_markup: Optional[Any] = None, 
                        disable_notification: bool = False) -> CommandResponse:
         """
         Create a formatted response object.
@@ -253,6 +253,14 @@ class BaseHandler(ABC):
         Returns:
             A CommandResponse object with the provided data
         """
+        if reply_markup and not isinstance(reply_markup, dict):
+            try:
+                # Serialize the InlineKeyboardMarkup object to a dictionary
+                reply_markup = reply_markup.model_dump(exclude_none=True)
+            except AttributeError:
+                self.logger.warning("reply_markup is not a dict and has no model_dump method", reply_markup=reply_markup)
+                reply_markup = None
+
         return CommandResponse(
             text=text,
             parse_mode=parse_mode,

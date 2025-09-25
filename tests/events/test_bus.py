@@ -13,15 +13,13 @@ from datetime import datetime
 from typing import Dict, Any, Callable, List
 import json
 
+from src.core.models import RedisConfig
 from src.events.bus import EventBus, LocalEventQueue, EventBusException
 from src.events.models import (
     BaseEvent, UserInteractionEvent, UserRegistrationEvent,
     ReactionDetectedEvent, DecisionMadeEvent, SubscriptionUpdatedEvent
 )
-from tests.utils.events import (
-    mock_redis_client, sample_test_events, event_data_generator,
-    event_batch
-)
+
 
 
 class TestEventBusInitialization:
@@ -29,7 +27,7 @@ class TestEventBusInitialization:
 
     def test_init_with_config(self):
         """Test EventBus initialization with configuration"""
-        config = {
+        config_dict = {
             'url': 'redis://localhost:6379',
             'max_connections': 10,
             'retry_on_timeout': True,
@@ -38,16 +36,17 @@ class TestEventBusInitialization:
             'local_queue_max_size': 1000,
             'local_queue_persistence_file': 'test_queue.pkl'
         }
-
+        config = RedisConfig(**config_dict)
         event_bus = EventBus(config)
-        assert event_bus.config == config
+        assert event_bus.redis_config == config
         assert event_bus._connected is False
         assert event_bus.local_queue is not None
 
     def test_init_with_defaults(self):
         """Test EventBus initialization with default configuration"""
-        event_bus = EventBus({})
-        assert event_bus.config == {}
+        config = RedisConfig()
+        event_bus = EventBus(config)
+        assert event_bus.redis_config == config
         assert event_bus._connected is False
 
 
@@ -57,12 +56,12 @@ class TestEventBusConnection:
     @pytest.mark.asyncio
     async def test_connect_success(self, mock_redis_client):
         """Test successful connection to Redis"""
-        config = {
+        config_dict = {
             'url': 'redis://localhost:6379',
             'max_connections': 5,
             'socket_connect_timeout': 2
         }
-
+        config = RedisConfig(**config_dict)
         event_bus = EventBus(config)
         
         # Mock Redis connection
@@ -77,13 +76,12 @@ class TestEventBusConnection:
     @pytest.mark.asyncio
     async def test_connect_failure(self):
         """Test connection failure handling"""
-        config = {
+        config_dict = {
             'url': 'redis://invalid:6379',
             'max_connections': 5,
             'socket_connect_timeout': 1,
-            'socket_keepalive': True
         }
-
+        config = RedisConfig(**config_dict)
         event_bus = EventBus(config)
         
         # Force connection failure
@@ -99,11 +97,11 @@ class TestEventBusConnection:
     @pytest.mark.asyncio
     async def test_disconnect(self, mock_redis_client):
         """Test disconnection from Redis"""
-        config = {
+        config_dict = {
             'url': 'redis://localhost:6379',
             'max_connections': 5
         }
-
+        config = RedisConfig(**config_dict)
         event_bus = EventBus(config)
         event_bus.redis_client = mock_redis_client
         event_bus._connected = True
@@ -119,12 +117,12 @@ class TestEventBusPublishing:
     @pytest.mark.asyncio
     async def test_publish_success(self, mock_redis_client, sample_test_events):
         """Test successful event publishing"""
-        config = {
+        config_dict = {
             'url': 'redis://localhost:6379',
             'max_connections': 5,
             'socket_connect_timeout': 2
         }
-
+        config = RedisConfig(**config_dict)
         event_bus = EventBus(config)
         event_bus.redis_client = mock_redis_client
         event_bus._connected = True
@@ -133,7 +131,7 @@ class TestEventBusPublishing:
         mock_redis_client.publish = AsyncMock(return_value=1)
         
         event = sample_test_events["user_interaction"]
-        result = await event_bus.publish(event)
+        result = await event_bus.publish("test", event)
         
         assert result is True
         mock_redis_client.publish.assert_called_once()
@@ -141,14 +139,14 @@ class TestEventBusPublishing:
     @pytest.mark.asyncio
     async def test_publish_with_retry_success(self, mock_redis_client, sample_test_events):
         """Test event publishing with initial failure but eventual success"""
-        config = {
+        config_dict = {
             'url': 'redis://localhost:6379',
             'max_connections': 5,
             'socket_connect_timeout': 2,
-            'publish_retries': 3
         }
-
+        config = RedisConfig(**config_dict)
         event_bus = EventBus(config)
+        event_bus.redis_config.retry_on_timeout = True
         event_bus.redis_client = mock_redis_client
         event_bus._connected = True
         
@@ -156,7 +154,7 @@ class TestEventBusPublishing:
         mock_redis_client.publish = AsyncMock(side_effect=[Exception("Failed"), 1])
         
         event = sample_test_events["reaction"]
-        result = await event_bus.publish(event)
+        result = await event_bus.publish("test", event)
         
         assert result is True
         assert mock_redis_client.publish.call_count == 2
@@ -164,14 +162,14 @@ class TestEventBusPublishing:
     @pytest.mark.asyncio
     async def test_publish_failure_after_retries(self, mock_redis_client, sample_test_events):
         """Test event publishing failure after all retry attempts"""
-        config = {
+        config_dict = {
             'url': 'redis://localhost:6379',
             'max_connections': 5,
             'socket_connect_timeout': 2,
-            'publish_retries': 2
         }
-
+        config = RedisConfig(**config_dict)
         event_bus = EventBus(config)
+        event_bus.redis_config.retry_on_timeout = True
         event_bus.redis_client = mock_redis_client
         event_bus._connected = True
         
@@ -179,18 +177,18 @@ class TestEventBusPublishing:
         mock_redis_client.publish = AsyncMock(side_effect=Exception("Always fails"))
         
         event = sample_test_events["decision"]
-        result = await event_bus.publish(event)
+        result = await event_bus.publish("test", event)
         
         assert result is False
 
     @pytest.mark.asyncio
     async def test_publish_to_custom_channel(self, mock_redis_client, sample_test_events):
         """Test publishing to a custom channel"""
-        config = {
+        config_dict = {
             'url': 'redis://localhost:6379',
             'max_connections': 5
         }
-
+        config = RedisConfig(**config_dict)
         event_bus = EventBus(config)
         event_bus.redis_client = mock_redis_client
         event_bus._connected = True
@@ -198,7 +196,7 @@ class TestEventBusPublishing:
         mock_redis_client.publish = AsyncMock(return_value=1)
         
         event = sample_test_events["subscription"]
-        result = await event_bus.publish(event, channel="custom_events")
+        result = await event_bus.publish("custom_events", event)
         
         assert result is True
         # Verify that the custom channel was used
@@ -208,12 +206,12 @@ class TestEventBusPublishing:
     @pytest.mark.asyncio
     async def test_publish_when_redis_unavailable_uses_local_queue(self, sample_test_events):
         """Test that events are queued locally when Redis is unavailable"""
-        config = {
+        config_dict = {
             'url': 'redis://localhost:6379',
             'max_connections': 5,
             'local_queue_max_size': 100
         }
-
+        config = RedisConfig(**config_dict)
         event_bus = EventBus(config)
         event_bus._connected = False  # Redis is not connected
         
@@ -222,7 +220,7 @@ class TestEventBusPublishing:
         event_bus.local_queue.add = AsyncMock(return_value=True)
         
         event = sample_test_events["user_registration"]
-        result = await event_bus.publish(event)
+        result = await event_bus.publish("test", event)
         
         assert result is True
         event_bus.local_queue.add.assert_called_once()
@@ -230,11 +228,11 @@ class TestEventBusPublishing:
     @pytest.mark.asyncio
     async def test_publish_serialization(self, mock_redis_client, sample_test_events):
         """Test that events are properly serialized before publishing"""
-        config = {
+        config_dict = {
             'url': 'redis://localhost:6379',
             'max_connections': 5
         }
-
+        config = RedisConfig(**config_dict)
         event_bus = EventBus(config)
         event_bus.redis_client = mock_redis_client
         event_bus._connected = True
@@ -242,7 +240,7 @@ class TestEventBusPublishing:
         mock_redis_client.publish = AsyncMock(return_value=1)
         
         event = sample_test_events["user_interaction"]
-        result = await event_bus.publish(event)
+        result = await event_bus.publish("test", event)
         
         assert result is True
         # Check that the event was serialized properly
@@ -251,8 +249,8 @@ class TestEventBusPublishing:
         deserialized_data = json.loads(serialized_data)
         
         # Verify the deserialized data has the expected structure
-        assert "event" in deserialized_data
-        assert deserialized_data["event"]["event_id"] == event.event_id
+        assert "event_type" in deserialized_data
+        assert deserialized_data["event_id"] == event.event_id
 
 
 class TestEventBusSubscription:
@@ -261,11 +259,7 @@ class TestEventBusSubscription:
     @pytest.mark.asyncio
     async def test_subscribe_to_channel(self, mock_redis_client):
         """Test subscribing to a channel"""
-        config = {
-            'url': 'redis://localhost:6379',
-            'max_connections': 5
-        }
-
+        config = RedisConfig()
         event_bus = EventBus(config)
         event_bus.redis_client = mock_redis_client
         
@@ -284,11 +278,7 @@ class TestEventBusSubscription:
     @pytest.mark.asyncio
     async def test_unsubscribe(self, mock_redis_client):
         """Test unsubscribing from a channel"""
-        config = {
-            'url': 'redis://localhost:6379',
-            'max_connections': 5
-        }
-
+        config = RedisConfig()
         event_bus = EventBus(config)
         event_bus.redis_client = mock_redis_client
         
@@ -315,12 +305,13 @@ class TestEventBusLocalQueue:
         event.event_type = "test_type"
         
         # Add event to queue
-        await local_queue.add(event)
+        await local_queue.add(("test", event))
         
         # Get event from queue
-        retrieved_event = await local_queue.get()
+        retrieved_event_tuple = await local_queue.get()
         
-        assert retrieved_event is not None
+        assert retrieved_event_tuple is not None
+        _channel, retrieved_event = retrieved_event_tuple
         assert retrieved_event.event_id == event.event_id
 
     @pytest.mark.asyncio
@@ -334,8 +325,8 @@ class TestEventBusLocalQueue:
         event2 = MagicMock()
         event2.event_id = "test_event_2"
         
-        await local_queue.add(event1)
-        await local_queue.add(event2)
+        await local_queue.add(("test", event1))
+        await local_queue.add(("test", event2))
         
         # Try to add one more (should fail or overwrite depending on implementation)
         event3 = MagicMock()
@@ -358,12 +349,7 @@ class TestEventBusReplayQueue:
     @pytest.mark.asyncio
     async def test_replay_queue_success(self, mock_redis_client):
         """Test successful replay of queued events when Redis becomes available"""
-        config = {
-            'url': 'redis://localhost:6379',
-            'max_connections': 5,
-            'local_queue_max_size': 10
-        }
-
+        config = RedisConfig()
         event_bus = EventBus(config)
         event_bus.redis_client = mock_redis_client
         event_bus._connected = False  # Initially disconnected
@@ -374,8 +360,8 @@ class TestEventBusReplayQueue:
         event2 = MagicMock()
         event2.event_id = "queued_event_2"
         
-        await event_bus.local_queue.add(event1)
-        await event_bus.local_queue.add(event2)
+        await event_bus.local_queue.add(("test", event1))
+        await event_bus.local_queue.add(("test", event2))
         
         # Now simulate Redis connection
         event_bus._connected = True
@@ -391,12 +377,7 @@ class TestEventBusReplayQueue:
     @pytest.mark.asyncio
     async def test_replay_queue_with_failures(self, mock_redis_client):
         """Test replay behavior when some events fail to publish"""
-        config = {
-            'url': 'redis://localhost:6379',
-            'max_connections': 5,
-            'local_queue_max_size': 10
-        }
-
+        config = RedisConfig()
         event_bus = EventBus(config)
         event_bus.redis_client = mock_redis_client
         event_bus._connected = False  # Initially disconnected
@@ -407,8 +388,8 @@ class TestEventBusReplayQueue:
         event2 = MagicMock()
         event2.event_id = "queued_event_2"
         
-        await event_bus.local_queue.add(event1)
-        await event_bus.local_queue.add(event2)
+        await event_bus.local_queue.add(("test", event1))
+        await event_bus.local_queue.add(("test", event2))
         
         # Now simulate Redis connection but make the first publish fail
         event_bus._connected = True
@@ -428,12 +409,7 @@ class TestEventBusHealthCheck:
     @pytest.mark.asyncio
     async def test_health_check_connected(self, mock_redis_client):
         """Test health check when Redis is connected"""
-        config = {
-            'url': 'redis://localhost:6379',
-            'max_connections': 5,
-            'socket_connect_timeout': 2
-        }
-
+        config = RedisConfig()
         event_bus = EventBus(config)
         event_bus.redis_client = mock_redis_client
         event_bus._connected = True
@@ -451,11 +427,7 @@ class TestEventBusHealthCheck:
     @pytest.mark.asyncio
     async def test_health_check_disconnected(self):
         """Test health check when Redis is disconnected"""
-        config = {
-            'url': 'redis://localhost:6379',
-            'max_connections': 5
-        }
-
+        config = RedisConfig()
         event_bus = EventBus(config)
         event_bus._connected = False
         
@@ -468,11 +440,7 @@ class TestEventBusHealthCheck:
     @pytest.mark.asyncio
     async def test_health_check_redis_failure(self, mock_redis_client):
         """Test health check when Redis ping fails"""
-        config = {
-            'url': 'redis://localhost:6379',
-            'max_connections': 5
-        }
-
+        config = RedisConfig()
         event_bus = EventBus(config)
         event_bus.redis_client = mock_redis_client
         event_bus._connected = True
@@ -493,27 +461,19 @@ class TestEventBusErrorHandling:
     @pytest.mark.asyncio
     async def test_publish_with_invalid_event(self, mock_redis_client):
         """Test publishing an invalid event"""
-        config = {
-            'url': 'redis://localhost:6379',
-            'max_connections': 5
-        }
-
+        config = RedisConfig()
         event_bus = EventBus(config)
         event_bus.redis_client = mock_redis_client
         event_bus._connected = True
         
         # Try to publish a non-event object
         with pytest.raises(Exception):
-            await event_bus.publish("not_an_event")
+            await event_bus.publish("test", "not_an_event")
 
     @pytest.mark.asyncio
     async def test_subscription_error_handling(self, mock_redis_client):
         """Test error handling in subscription process"""
-        config = {
-            'url': 'redis://localhost:6379',
-            'max_connections': 5
-        }
-
+        config = RedisConfig()
         event_bus = EventBus(config)
         event_bus.redis_client = mock_redis_client
         
@@ -535,11 +495,7 @@ class TestEventBusPerformance:
     @pytest.mark.asyncio
     async def test_event_publication_performance(self, mock_redis_client, event_batch):
         """Test that event publication meets performance requirements"""
-        config = {
-            'url': 'redis://localhost:6379',
-            'max_connections': 10
-        }
-
+        config = RedisConfig()
         event_bus = EventBus(config)
         event_bus.redis_client = mock_redis_client
         event_bus._connected = True
@@ -552,7 +508,7 @@ class TestEventBusPerformance:
         
         # Publish multiple events
         for event in event_batch:
-            await event_bus.publish(event)
+            await event_bus.publish("test", event)
         
         end_time = time.time()
         total_time_ms = (end_time - start_time) * 1000
@@ -571,7 +527,7 @@ class TestEventBusPerformance:
         
         # Add events to queue
         for event in event_batch:
-            await local_queue.add(event)
+            await local_queue.add(("test", event))
         
         end_time = time.time()
         total_time_ms = (end_time - start_time) * 1000
@@ -587,11 +543,7 @@ class TestEventBusEdgeCases:
     @pytest.mark.asyncio
     async def test_empty_queue_replay(self):
         """Test replaying an empty queue"""
-        config = {
-            'url': 'redis://localhost:6379',
-            'max_connections': 5
-        }
-
+        config = RedisConfig()
         event_bus = EventBus(config)
         # Queue is initially empty
         
@@ -601,11 +553,7 @@ class TestEventBusEdgeCases:
     @pytest.mark.asyncio
     async def test_large_event_serialization(self):
         """Test serialization of very large events"""
-        config = {
-            'url': 'redis://localhost:6379',
-            'max_connections': 5
-        }
-
+        config = RedisConfig()
         event_bus = EventBus(config)
         
         # Create an event with large payload
@@ -617,27 +565,23 @@ class TestEventBusEdgeCases:
                     event_id="large_event_1",
                     event_type="large_test_event",
                     timestamp=datetime.utcnow(),
-                    payload=large_payload
                 )
-        
+                self.payload = large_payload
+
         large_event = LargeEvent()
         
         # Verify the event can be serialized/deserialized without errors
         try:
             serialized = event_bus._serialize_event(large_event)
-            deserialized = event_bus._deserialize_event(serialized)
-            assert deserialized["event"]["payload"]["data"] == large_payload["data"]
+            deserialized = json.loads(serialized)
+            assert deserialized["payload"]["data"] == large_payload["data"]
         except Exception as e:
             pytest.fail(f"Large event serialization failed: {e}")
 
     @pytest.mark.asyncio
     async def test_concurrent_publishing(self, mock_redis_client):
         """Test concurrent event publishing"""
-        config = {
-            'url': 'redis://localhost:6379',
-            'max_connections': 10
-        }
-
+        config = RedisConfig()
         event_bus = EventBus(config)
         event_bus.redis_client = mock_redis_client
         event_bus._connected = True
@@ -654,13 +598,13 @@ class TestEventBusEdgeCases:
                         event_id=event_id,
                         event_type="test_concurrent",
                         timestamp=datetime.utcnow(),
-                        payload={"index": i}
                     )
+                    self.payload = {"index": i}
             
             events.append(TestEvent(f"concurrent_event_{i}"))
         
         # Publish concurrently
-        tasks = [event_bus.publish(event) for event in events]
+        tasks = [event_bus.publish("test", event) for event in events]
         results = await asyncio.gather(*tasks)
         
         # All publications should succeed
@@ -676,17 +620,17 @@ class TestEventBusActualImplementation:
     @pytest.mark.asyncio
     async def test_basic_config_initialization(self):
         """Test EventBus initialization with basic config"""
-        config = {
+        config_dict = {
             'url': 'redis://localhost:6379',
             'max_connections': 5,
             'socket_connect_timeout': 2,
             'local_queue_max_size': 100
         }
-
+        config = RedisConfig(**config_dict)
         event_bus = EventBus(config)
         
         # Just check initialization doesn't fail
-        assert event_bus.config == config
+        assert event_bus.redis_config == config
         assert event_bus._connected is False
         assert event_bus.local_queue is not None
 

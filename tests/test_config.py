@@ -23,9 +23,10 @@ class TestConfigManager:
         """Test that ConfigManager initializes correctly with default values."""
         # Ensure we have a clean environment for this test
         with patch.dict(os.environ, {
-            'BOT_TOKEN': 'test_token_123',
+            'BOT_TOKEN': '123456789:AAG-w_1234567890abcdefghijklmnopqrstuvwxyz',
             'WEBHOOK_URL': 'https://example.com/webhook',
-            'WEBHOOK_SECRET': 'test_secret'
+            'WEBHOOK_SECRET': 'test_secret',
+            'PYTEST_RUNNING': 'true'
         }):
             config_manager = ConfigManager()
             
@@ -35,14 +36,14 @@ class TestConfigManager:
             assert config_manager.logging_config is not None
 
     def test_get_bot_token(self):
-        """Test that ConfigManager can retrieve the bot token."""
         with patch.dict(os.environ, {
-            'BOT_TOKEN': 'test_token_123:ABCdefGHI'
+            'BOT_TOKEN': '123456789:AAG-w_1234567890abcdefghijklmnopqrstuvwxyz',
+            'PYTEST_RUNNING': 'true'
         }):
             config_manager = ConfigManager()
             bot_token = config_manager.get_bot_token()
             
-            assert bot_token == 'test_token_123:ABCdefGHI'
+            assert bot_token == '123456789:AAG-w_1234567890abcdefghijklmnopqrstuvwxyz'
 
     def test_get_bot_token_from_environment(self, test_bot_token):
         """Test that ConfigManager retrieves bot token from test environment."""
@@ -54,11 +55,12 @@ class TestConfigManager:
     def test_webhook_config_creation(self):
         """Test that webhook configuration is properly created from environment."""
         with patch.dict(os.environ, {
-            'BOT_TOKEN': 'test_token_123:ABCdefGHI',
+            'BOT_TOKEN': '123456789:AAG-w_1234567890abcdefghijklmnopqrstuvwxyz',
             'WEBHOOK_URL': 'https://example.com/webhook',
             'WEBHOOK_SECRET': 'test_secret',
             'WEBHOOK_MAX_CONNECTIONS': '50',
-            'WEBHOOK_ALLOWED_UPDATES': 'message,callback_query'
+            'WEBHOOK_ALLOWED_UPDATES': 'message,callback_query',
+            'PYTEST_RUNNING': 'true'
         }):
             config_manager = ConfigManager()
             webhook_config = config_manager.get_webhook_config()
@@ -73,11 +75,12 @@ class TestConfigManager:
     def test_logging_config_creation(self):
         """Test that logging configuration is properly created from environment."""
         with patch.dict(os.environ, {
-            'BOT_TOKEN': 'test_token_123:ABCdefGHI',
+            'BOT_TOKEN': '123456789:AAG-w_1234567890abcdefghijklmnopqrstuvwxyz',
             'LOG_LEVEL': 'DEBUG',
             'LOG_FORMAT': 'json',
             'LOG_MAX_FILE_SIZE': '20971520',  # 20MB
-            'LOG_BACKUP_COUNT': '10'
+            'LOG_BACKUP_COUNT': '10',
+            'PYTEST_RUNNING': 'true'
         }):
             config_manager = ConfigManager()
             logging_config = config_manager.get_logging_config()
@@ -91,7 +94,8 @@ class TestConfigManager:
     def test_validate_config_with_valid_settings(self):
         """Test that config validation passes with valid settings."""
         with patch.dict(os.environ, {
-            'BOT_TOKEN': 'test_token_123:ABCdefGHI'
+            'BOT_TOKEN': '123456789:AAG-w_1234567890abcdefghijklmnopqrstuvwxyz',
+            'PYTEST_RUNNING': 'true'
         }):
             config_manager = ConfigManager()
             is_valid = config_manager.validate_config()
@@ -110,8 +114,9 @@ class TestConfigManager:
     def test_get_mode_polling_by_default(self):
         """Test that the bot operates in polling mode by default."""
         with patch.dict(os.environ, {
-            'BOT_TOKEN': 'test_token_123:ABCdefGHI',
-            'POLLING_ENABLED': 'true'
+            'BOT_TOKEN': '123456789:AAG-w_1234567890abcdefghijklmnopqrstuvwxyz',
+            'POLLING_ENABLED': 'true',
+            'PYTEST_RUNNING': 'true'
         }):
             config_manager = ConfigManager()
             mode = config_manager.get_mode()
@@ -119,11 +124,11 @@ class TestConfigManager:
             assert mode == 'polling'
 
     def test_get_mode_webhook_when_configured(self):
-        """Test that the bot operates in webhook mode when configured."""
         with patch.dict(os.environ, {
-            'BOT_TOKEN': 'test_token_123:ABCdefGHI',
+            'BOT_TOKEN': '123456789:AAG-w_1234567890abcdefghijklmnopqrstuvwxyz',
             'WEBHOOK_URL': 'https://example.com/webhook',
-            'POLLING_ENABLED': 'false'
+            'POLLING_ENABLED': 'false',
+            'PYTEST_RUNNING': 'true'
         }):
             config_manager = ConfigManager()
             mode = config_manager.get_mode()
@@ -133,9 +138,10 @@ class TestConfigManager:
     def test_is_webhook_mode(self):
         """Test the is_webhook_mode method."""
         with patch.dict(os.environ, {
-            'BOT_TOKEN': 'test_token_123:ABCdefGHI',
+            'BOT_TOKEN': '123456789:AAG-w_1234567890abcdefghijklmnopqrstuvwxyz',
             'WEBHOOK_URL': 'https://example.com/webhook',
-            'POLLING_ENABLED': 'false'
+            'POLLING_ENABLED': 'false',
+            'PYTEST_RUNNING': 'true'
         }):
             config_manager = ConfigManager()
             
@@ -144,9 +150,10 @@ class TestConfigManager:
     def test_is_webhook_mode_false_when_polling_enabled(self):
         """Test that is_webhook_mode returns False when polling is enabled."""
         with patch.dict(os.environ, {
-            'BOT_TOKEN': 'test_token_123:ABCdefGHI',
+            'BOT_TOKEN': '123456789:AAG-w_1234567890abcdefghijklmnopqrstuvwxyz',
             'WEBHOOK_URL': 'https://example.com/webhook',
-            'POLLING_ENABLED': 'true'
+            'POLLING_ENABLED': 'true',
+            'PYTEST_RUNNING': 'true'
         }):
             config_manager = ConfigManager()
             
@@ -166,7 +173,8 @@ class TestConfigManagerSingleton:
     def test_config_manager_properties(self):
         """Test that the singleton instance has the expected properties."""
         with patch.dict(os.environ, {
-            'BOT_TOKEN': 'test_token_123:ABCdefGHI'
+            'BOT_TOKEN': '123456789:AAG-w_1234567890abcdefghijklmnopqrstuvwxyz',
+            'PYTEST_RUNNING': 'true'
         }):
             config_manager = get_config_manager()
             
@@ -183,13 +191,13 @@ class TestBotConfigModel:
     def test_bot_config_creation(self):
         """Test creating a BotConfig instance."""
         config = BotConfig(
-            bot_token='test_token_123:ABCdefGHI',
+            bot_token='123456789:AAG-w_1234567890abcdefghijklmnopqrstuvwxyz',
             webhook_url='https://example.com/webhook',
             max_connections=50,
             request_timeout=45
         )
         
-        assert config.bot_token == 'test_token_123:ABCdefGHI'
+        assert config.bot_token == '123456789:AAG-w_1234567890abcdefghijklmnopqrstuvwxyz'
         assert config.webhook_url == 'https://example.com/webhook'
         assert config.max_connections == 50
         assert config.request_timeout == 45

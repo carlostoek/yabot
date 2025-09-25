@@ -1,17 +1,2 @@
-"""
-Core components module for the bot framework
-"""
+print("in src/core/__init__.py")
 from . import application
-from . import router
-from . import models
-from . import error_handler
-from . import middleware
-
-
-__all__ = [
-    'application',
-    'router',
-    'models', 
-    'error_handler',
-    'middleware'
-]
