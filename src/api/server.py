@@ -67,15 +67,36 @@ def create_api_server(
         if database_manager:
             try:
                 db_health = await database_manager.health_check()
-                health_status["database"] = db_health
+                # Ensure we return only JSON-serializable data
+                if isinstance(db_health, dict):
+                    # Filter out any non-serializable values
+                    safe_db_health = {}
+                    for key, value in db_health.items():
+                        if isinstance(value, (str, int, float, bool, type(None))):
+                            safe_db_health[key] = value
+                        else:
+                            safe_db_health[key] = str(value)
+                    health_status["database"] = safe_db_health
+                else:
+                    health_status["database"] = {"status": "healthy"}
             except Exception as e:
                 health_status["database"] = {"error": str(e), "status": "unhealthy"}
-        
+
         # Check event bus connectivity if available
         if event_bus:
             try:
                 bus_health = await event_bus.health_check()
-                health_status["event_bus"] = bus_health
+                # Ensure we return only JSON-serializable data
+                if isinstance(bus_health, dict):
+                    safe_bus_health = {}
+                    for key, value in bus_health.items():
+                        if isinstance(value, (str, int, float, bool, type(None))):
+                            safe_bus_health[key] = value
+                        else:
+                            safe_bus_health[key] = str(value)
+                    health_status["event_bus"] = safe_bus_health
+                else:
+                    health_status["event_bus"] = {"status": "healthy"}
             except Exception as e:
                 health_status["event_bus"] = {"error": str(e), "status": "unhealthy"}
         

@@ -40,10 +40,9 @@ class StartCommandHandler(BaseHandler, MessageHandlerMixin):
         """Process the /start command"""
         # Extract data from kwargs (injected via middleware)
         from src.events.bus import EventBus
-        data = kwargs.get('data', {})
-        database_manager = data.get('database_manager')
-        user_service = data.get('user_service')
-        event_bus = data.get('event_bus')
+        database_manager = kwargs.get('database_manager')
+        user_service = kwargs.get('user_service')
+        event_bus = kwargs.get('event_bus')
         
         # Ensure services are available
         if not database_manager or not user_service:

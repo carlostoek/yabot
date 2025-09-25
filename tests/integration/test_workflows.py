@@ -16,7 +16,7 @@ from aiogram.types import Message, User, Chat
 from src.database.manager import DatabaseManager
 from src.events.bus import EventBus
 from src.services.user import UserService
-from src.handlers.command import CommandHandler
+from src.handlers.commands import StartCommandHandler
 from src.handlers.webhook import WebhookHandler
 from src.events.models import (
     UserRegistrationEvent, UserInteractionEvent, 
@@ -29,7 +29,7 @@ class TestUserRegistrationWorkflow:
     """Test the complete user registration workflow"""
 
     @pytest.mark.asyncio
-    async def test_complete_user_registration_flow(self, populated_test_database, test_event_bus):
+    async def test_complete_user_registration_flow(self, populated_test_database):
         """Test the complete user registration flow from start command to database persistence"""
         # Setup mock user
         mock_user = User(id=123456789, is_bot=False, first_name="New", username="new_user", language_code="es")
@@ -50,21 +50,23 @@ class TestUserRegistrationWorkflow:
         ])
         db_manager.create_user_atomic = AsyncMock(return_value=True)
 
-        # Setup event bus
-        event_bus = test_event_bus
+        # Setup mock event bus
+        event_bus = AsyncMock()
+        event_bus.publish = AsyncMock()
 
         # Setup user service
         user_service = UserService(db_manager)
 
         # Create command handler with dependencies
-        cmd_handler = CommandHandler()
+        cmd_handler = StartCommandHandler()
 
-        # Execute the registration flow
-        await cmd_handler.handle_message(mock_message, data={
-            'database_manager': db_manager,
-            'user_service': user_service,
-            'event_bus': event_bus
-        })
+        # Execute the registration flow (simulating middleware injection)
+        await cmd_handler.handle_message(
+            mock_message,
+            database_manager=db_manager,
+            user_service=user_service,
+            event_bus=event_bus
+        )
 
         # Verify the complete flow executed correctly
         db_manager.get_user_from_mongo.assert_called()
@@ -98,7 +100,7 @@ class TestUserRegistrationWorkflow:
         user_service = UserService(db_manager)
 
         # Create command handler with dependencies
-        cmd_handler = CommandHandler()
+        cmd_handler = StartCommandHandler()
 
         # Execute the registration flow - should still work despite event failure
         await cmd_handler.handle_message(mock_message, data={
@@ -133,7 +135,7 @@ class TestNarrativeInteractionWorkflow:
         user_service = UserService(db_manager)
 
         # Create command handler
-        cmd_handler = CommandHandler()
+        cmd_handler = StartCommandHandler()
 
         # Step 1: User requests menu
         mock_user = User(
@@ -211,7 +213,7 @@ class TestNarrativeInteractionWorkflow:
         user_service = UserService(db_manager)
 
         # Create command handler
-        cmd_handler = CommandHandler()
+        cmd_handler = StartCommandHandler()
 
         # Simulate user reaction to narrative
         reaction_event = ReactionDetectedEvent(
@@ -258,7 +260,7 @@ class TestVIPAccessWorkflow:
         user_service = UserService(db_manager)
 
         # Create command handler
-        cmd_handler = CommandHandler()
+        cmd_handler = StartCommandHandler()
 
         # Simulate user requesting VIP content
         mock_user = User(
@@ -310,7 +312,7 @@ class TestVIPAccessWorkflow:
         user_service = UserService(db_manager)
 
         # Create command handler
-        cmd_handler = CommandHandler()
+        cmd_handler = StartCommandHandler()
 
         # Execute VIP access validation
         access_granted = await user_service.get_user_subscription_status(user_id)
@@ -424,7 +426,7 @@ class TestErrorRecoveryWorkflow:
         user_service = UserService(db_manager)
 
         # Create command handler
-        cmd_handler = CommandHandler()
+        cmd_handler = StartCommandHandler()
 
         # First attempt should handle the error gracefully
         mock_user = User(id=int("77777"), is_bot=False, first_name="Recovery", username="recovery_user")
@@ -482,7 +484,7 @@ class TestErrorRecoveryWorkflow:
         user_service = UserService(db_manager)
 
         # Create command handler
-        cmd_handler = CommandHandler()
+        cmd_handler = StartCommandHandler()
 
         # Execute workflow - should continue despite event publishing failure
         mock_user = User(
@@ -523,7 +525,7 @@ class TestPerformanceWorkflow:
         user_service = UserService(db_manager)
         
         # Create handlers
-        cmd_handler = CommandHandler()
+        cmd_handler = StartCommandHandler()
 
         # Create multiple concurrent workflow tasks
         async def run_user_workflow(user_index):
@@ -607,7 +609,7 @@ class TestPerformanceWorkflow:
         user_service = UserService(db_manager)
 
         # Create command handler
-        cmd_handler = CommandHandler()
+        cmd_handler = StartCommandHandler()
 
         # Simulate a long narrative session with multiple interactions
         for step in range(5):  # 5 narrative steps
@@ -657,7 +659,7 @@ class TestCrossComponentWorkflow:
         user_service = UserService(db_manager)
 
         # Create command handler
-        cmd_handler = CommandHandler()
+        cmd_handler = StartCommandHandler()
 
         # Step 1: Handler receives command
         mock_user = User(

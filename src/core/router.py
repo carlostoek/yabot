@@ -178,7 +178,7 @@ def setup_routers(dp) -> None:
     middleware_manager = setup_default_middlewares()
     
     # Register the router with the dispatcher
-    dp.include_router(router_manager.get_router())
+    # dp.include_router(router_manager.get_router())  # Commented out to avoid duplicate router registration
     
     # Add middlewares to the dispatcher (root router) for broader coverage
     # In aiogram 3.x, middlewares should be registered on the dispatcher for all update types

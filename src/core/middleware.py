@@ -279,11 +279,11 @@ class DatabaseMiddleware(BaseMiddleware):
     ) -> Any:
         # Inject database services into handler data (Requirement 5.1.4)
         data["database_manager"] = self.database_manager
+        data["event_bus"] = self.event_bus
 
-        # Add user service for easy access if event_bus is available
-        if self.event_bus:
-            from src.services.user import UserService
-            data["user_service"] = UserService(self.database_manager, self.event_bus)
+        # Add user service for easy access
+        from src.services.user import UserService
+        data["user_service"] = UserService(self.database_manager)
 
         # Call next handler in chain
         return await handler(event, data)

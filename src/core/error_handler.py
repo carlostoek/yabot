@@ -33,6 +33,14 @@ import traceback
 from src.events.exceptions import EventBusException, EventProcessingError
 import redis.exceptions
 
+# Database errors
+try:
+    from sqlalchemy.exc import SQLAlchemyError
+except ImportError:
+    # Fallback if SQLAlchemy is not available
+    class SQLAlchemyError(Exception):
+        pass
+
 
 class ErrorHandler:
     """

@@ -101,8 +101,7 @@ class BotApplication:
             # Initialize dispatcher
             self.dispatcher = Dispatcher()
             
-            # Setup routers (command and message handlers)
-            setup_routers(self.dispatcher)
+            # Routers will be setup later after all dependencies are initialized
             
             # Initialize webhook handler if needed
             if config_manager.get_webhook_config():
@@ -239,9 +238,8 @@ class BotApplication:
             self.dispatcher.inline_query.middleware(db_middleware)
             self.dispatcher.chosen_inline_result.middleware(db_middleware)
 
-        # Include routers with database services
-        from src.handlers import main_router
-        self.dispatcher.include_router(main_router)
+        # Setup routers with all middlewares and handlers
+        setup_routers(self.dispatcher)
 
     async def start(self) -> None:
         """

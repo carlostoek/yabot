@@ -39,7 +39,9 @@ class TestCompleteStartupSequence:
         enhanced_mock_config_manager
     ):
         """Test complete startup sequence in polling mode."""
-        with patch('src.config.manager.get_config_manager', return_value=enhanced_mock_config_manager):
+        with patch('aiogram.utils.token.validate_token') as mock_validate:
+            # Skip token validation for tests
+            mock_validate.return_value = True
             with patch('src.database.manager.DatabaseManager') as mock_db_class:
                 with patch('src.events.bus.EventBus') as mock_bus_class:
                     # Setup mocks
@@ -83,7 +85,9 @@ class TestCompleteStartupSequence:
         enhanced_mock_config_manager.is_webhook_mode.return_value = True
         enhanced_mock_config_manager.get_mode.return_value = 'webhook'
 
-        with patch('src.config.manager.get_config_manager', return_value=enhanced_mock_config_manager):
+        with patch('aiogram.utils.token.validate_token') as mock_validate:
+            # Skip token validation for tests
+            mock_validate.return_value = True
             with patch('src.database.manager.DatabaseManager') as mock_db_class:
                 with patch('src.events.bus.EventBus') as mock_bus_class:
                     # Setup mocks
@@ -214,15 +218,15 @@ class TestCompleteStartupSequence:
         telegram_user_data
     ):
         """Test UserService initialization with event_bus parameter fix."""
-        # Create UserService with dependencies
-        user_service = UserService(mock_database_manager, mock_event_bus)
+        # Create UserService with dependencies (event_bus passed via kwargs in methods, not constructor)
+        user_service = UserService(mock_database_manager)
 
         # Verify dependencies are properly set
         assert user_service.db_manager == mock_database_manager
-        assert user_service.event_bus == mock_event_bus
+        # event_bus is passed as kwargs to methods, not stored as attribute
 
-        # Test user creation with event publishing
-        result = await user_service.create_user(telegram_user_data)
+        # Test user creation with event publishing (event_bus passed via kwargs)
+        result = await user_service.create_user(telegram_user_data, event_bus=mock_event_bus)
 
         # Verify database operations were called
         mock_database_manager.create_user_atomic.assert_called_once()
@@ -263,7 +267,9 @@ class TestCompleteStartupSequence:
         enhanced_mock_config_manager
     ):
         """Test startup failure and recovery scenarios."""
-        with patch('src.config.manager.get_config_manager', return_value=enhanced_mock_config_manager):
+        with patch('aiogram.utils.token.validate_token') as mock_validate:
+            # Skip token validation for tests
+            mock_validate.return_value = True
             with patch('src.database.manager.DatabaseManager') as mock_db_class:
                 # Simulate database initialization failure
                 mock_db_instance = MagicMock()
@@ -287,7 +293,9 @@ class TestCompleteStartupSequence:
         # Configure for webhook mode initially
         enhanced_mock_config_manager.is_webhook_mode.return_value = True
 
-        with patch('src.config.manager.get_config_manager', return_value=enhanced_mock_config_manager):
+        with patch('aiogram.utils.token.validate_token') as mock_validate:
+            # Skip token validation for tests
+            mock_validate.return_value = True
             with patch('src.database.manager.DatabaseManager') as mock_db_class:
                 with patch('src.events.bus.EventBus') as mock_bus_class:
                     # Setup mocks
@@ -363,7 +371,9 @@ class TestCompleteStartupSequence:
         """Test startup performance and memory usage."""
         performance_monitor.start()
 
-        with patch('src.config.manager.get_config_manager', return_value=enhanced_mock_config_manager):
+        with patch('aiogram.utils.token.validate_token') as mock_validate:
+            # Skip token validation for tests
+            mock_validate.return_value = True
             with patch('src.database.manager.DatabaseManager') as mock_db_class:
                 with patch('src.events.bus.EventBus') as mock_bus_class:
                     # Setup mocks
