@@ -1,0 +1,3 @@
+"""
+Narrative module package initialization
+"""
