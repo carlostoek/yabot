@@ -22,7 +22,7 @@ from src.events.models import (
     HintUnlockedEvent, SystemNotificationEvent
 )
 from src.core.models import RedisConfig
-from src.database.mongodb import get_database_client
+from src.database.manager import DatabaseManager
 
 # Gamification module imports
 from src.modules.gamification.besitos_wallet import BesitosWallet, BesitosTransactionType
@@ -74,23 +74,39 @@ async def event_bus():
 
 
 @pytest.fixture
-async def db_client():
-    """Create test database client"""
-    client = get_database_client()
-    # Use test database
-    test_db = client.yabot_test
-
-    yield client
-
-    # Cleanup test data
+async def db_manager():
+    """Create test database manager"""
+    config = {
+        'mongodb_uri': 'mongodb://localhost:27017',
+        'mongodb_database': 'yabot_integration_test',
+        'sqlite_database_path': ':memory:',  # In-memory SQLite for tests
+        'pool_size': 5,
+        'max_overflow': 10,
+        'pool_timeout': 5
+    }
+    
+    db_manager = DatabaseManager(config)
+    
     try:
-        await test_db.users.drop()
-        await test_db.besitos_transactions.drop()
-        await test_db.missions.drop()
-        await test_db.items.drop()
-        await test_db.narrative_progress.drop()
-    except Exception:
-        pass
+        await db_manager.connect_all()
+        yield db_manager
+    finally:
+        # Cleanup test data
+        try:
+            test_db = db_manager.get_mongo_db()
+            if test_db:
+                await test_db.users.drop()
+                await test_db.besitos_transactions.drop()
+                await test_db.missions.drop()
+                await test_db.items.drop()
+                await test_db.user_inventory.drop()  # Updated collection name
+                await test_db.user_items.drop()  # Updated collection name
+                await test_db.user_gamification_data.drop()
+                await test_db.narrative_progress.drop()
+        except Exception as e:
+            pass  # Ignore cleanup errors
+        
+        await db_manager.close_connections()
 
 
 @pytest.fixture

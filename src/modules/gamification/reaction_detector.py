@@ -27,7 +27,7 @@ from src.utils.logger import get_logger
 from src.core.error_handler import ErrorHandler
 from src.core.models import RedisConfig
 from src.modules.gamification.besitos_wallet import BesitosWallet
-from src.shared.api.auth import get_api_client
+from src.shared.api.auth import get_cross_module_auth_service
 
 
 class ReactionDetectorConfig(BaseModel):
@@ -64,7 +64,7 @@ class ReactionDetector:
         from src.database.mongodb import get_database_client
         self.db_client = get_database_client()
         self.besitos_wallet = BesitosWallet(self.db_client, event_bus)
-        self.api_client = get_api_client()
+        self.api_client = get_cross_module_auth_service()
 
         # Initialize Redis for cooldowns
         self.redis_config = redis_config or RedisConfig()
