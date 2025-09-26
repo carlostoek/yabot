@@ -248,6 +248,53 @@ class ContentViewedEvent(BaseModel):
         }
 
 
+
+class BesitosAddedEvent(BaseModel):
+    """
+    Event for when besitos are added to a user's wallet
+    """
+    event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    event_type: str = "besitos_added"
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    correlation_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    amount: int
+    new_balance: int
+    transaction_type: str
+    description: Optional[str] = None
+    reference_data: Optional[Dict[str, Any]] = None
+    payload: Dict[str, Any] = Field(default_factory=dict)
+    status: EventStatus = EventStatus.PENDING
+
+    class Config:
+        json_encoders = {
+            datetime: lambda dt: dt.isoformat(),
+            uuid.UUID: str
+        }
+
+class BesitosSpentEvent(BaseModel):
+    """
+    Event for when besitos are spent from a user's wallet
+    """
+    event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    event_type: str = "besitos_spent"
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    correlation_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    amount: int
+    new_balance: int
+    transaction_type: str
+    description: Optional[str] = None
+    reference_data: Optional[Dict[str, Any]] = None
+    payload: Dict[str, Any] = Field(default_factory=dict)
+    status: EventStatus = EventStatus.PENDING
+
+    class Config:
+        json_encoders = {
+            datetime: lambda dt: dt.isoformat(),
+            uuid.UUID: str
+        }
+
 class HintUnlockedEvent(BaseModel):
     """
     Event for when a user unlocks a hint
