@@ -79,7 +79,7 @@ class SubscriptionService(LoggerMixin):
                         new_status=SubscriptionStatus.ACTIVE.value,
                         plan_type=plan_type.value
                     )
-                    await event_bus.publish("subscription_created", event.dict())
+                    await event_bus.publish("subscription_created", event)
                 
                 self.logger.info("Subscription created successfully", user_id=user_id)
                 return subscription_data
@@ -152,7 +152,7 @@ class SubscriptionService(LoggerMixin):
                         new_status=new_status.value,
                         plan_type=current_sub.get("plan_type", "free") if current_sub else "free"
                     )
-                    await event_bus.publish("subscription_updated", event.dict())
+                    await event_bus.publish("subscription_updated", event)
                 
                 self.logger.info("Subscription status updated", user_id=user_id, new_status=new_status)
                 return True
@@ -251,7 +251,7 @@ class SubscriptionService(LoggerMixin):
                         new_status=SubscriptionStatus.ACTIVE.value,
                         plan_type=new_plan.value
                     )
-                    await event_bus.publish("subscription_upgraded", event.dict())
+                    await event_bus.publish("subscription_upgraded", event)
                 
                 self.logger.info("Subscription upgraded", user_id=user_id, old_plan=old_plan, new_plan=new_plan)
                 return True

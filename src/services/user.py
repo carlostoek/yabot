@@ -96,7 +96,7 @@ class UserService(LoggerMixin):
                         user_id=user_id,
                         telegram_data=telegram_user
                     )
-                    await event_bus.publish("user_registered", event.dict())
+                    await event_bus.publish("user_registered", event)
                 
                 self.logger.info("User created successfully", user_id=user_id)
                 return {
@@ -188,7 +188,7 @@ class UserService(LoggerMixin):
                         action="update_state",
                         context=new_state
                     )
-                    await event_bus.publish("user_state_updated", event.dict())
+                    await event_bus.publish("user_state_updated", event)
                 
                 self.logger.info("User state updated successfully", user_id=user_id)
                 return True

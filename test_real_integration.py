@@ -6,7 +6,7 @@ Usa los servicios reales del sistema: MongoDB, EventBus, DatabaseManager, Subscr
 import asyncio
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 
 # Agregar src al PYTHONPATH y importar con ruta completa
@@ -145,8 +145,8 @@ class RealIntegrationTester:
                 "messages_sent": 0,
                 "besitos": 100
             },
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc)
         }
 
         # Crear perfil real en SQLite
@@ -157,7 +157,7 @@ class RealIntegrationTester:
             "first_name": "Test",
             "last_name": "User",
             "language_code": "es",
-            "registration_date": datetime.utcnow(),
+            "registration_date": datetime.now(timezone.utc),
             "is_active": True
         }
 
@@ -275,7 +275,7 @@ class RealIntegrationTester:
         import events.models as event_models
         test_event = event_models.BaseEvent(
             event_type="test_integration_event",
-            data={"message": "Test de integración real", "timestamp": datetime.utcnow().isoformat()}
+            data={"message": "Test de integración real", "timestamp": datetime.now(timezone.utc).isoformat()}
         )
 
         published = await self.event_bus.publish("test_channel", test_event)
@@ -306,7 +306,7 @@ class RealIntegrationTester:
 
         # Crear suscripción que expira en 1 segundo
         expired_user_id = "expired_test_user_456"
-        past_date = datetime.utcnow() - timedelta(seconds=1)
+        past_date = datetime.now(timezone.utc) - timedelta(seconds=1)
 
         subscription_data = {
             "user_id": expired_user_id,
@@ -319,7 +319,32 @@ class RealIntegrationTester:
         }
 
         # Insertar directamente en SQLite para simular suscripción expirada
-        created = await self.db_manager.create_subscription(subscription_data)
+        sqlite_engine = self.db_manager.get_sqlite_engine()
+        if not sqlite_engine:
+            print("❌ ERROR: SQLite engine no disponible")
+            return False
+
+        try:
+            async with sqlite_engine.connect() as conn:
+                await conn.execute(
+                    """INSERT INTO subscriptions
+                       (user_id, plan_type, status, start_date, end_date, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        subscription_data['user_id'],
+                        subscription_data['plan_type'],
+                        subscription_data['status'],
+                        subscription_data['start_date'],
+                        subscription_data['end_date'],
+                        subscription_data['created_at'],
+                        subscription_data['updated_at']
+                    )
+                )
+                await conn.commit()
+            created = True
+        except Exception as e:
+            print(f"❌ ERROR: Error al insertar suscripción directamente: {e}")
+            created = False
         if not created:
             print("❌ ERROR: No se pudo crear suscripción para test de expiración")
             return False

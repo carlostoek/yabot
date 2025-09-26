@@ -405,23 +405,13 @@ class DatabaseManager:
                 return False
 
             async with sqlite_engine.connect() as conn:
-                await conn.execute(
-                    """INSERT INTO user_profiles
+                from sqlalchemy import text
+                stmt = text("""INSERT INTO user_profiles
                        (user_id, telegram_user_id, username, first_name, last_name,
                         language_code, registration_date, last_login, is_active)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        sqlite_profile.get('user_id'),
-                        sqlite_profile.get('telegram_user_id'),
-                        sqlite_profile.get('username'),
-                        sqlite_profile.get('first_name'),
-                        sqlite_profile.get('last_name'),
-                        sqlite_profile.get('language_code'),
-                        sqlite_profile.get('registration_date'),
-                        sqlite_profile.get('last_login'),
-                        sqlite_profile.get('is_active')
-                    )
-                )
+                       VALUES (:user_id, :telegram_user_id, :username, :first_name, :last_name,
+                        :language_code, :registration_date, :last_login, :is_active)""")
+                await conn.execute(stmt, sqlite_profile)
                 await conn.commit()
 
             self.logger.info("User created atomically", user_id=user_id)
@@ -480,10 +470,9 @@ class DatabaseManager:
                 return None
 
             async with sqlite_engine.connect() as conn:
-                result = await conn.execute(
-                    "SELECT * FROM user_profiles WHERE user_id = ?",
-                    (user_id,)
-                )
+                from sqlalchemy import text
+                stmt = text("SELECT * FROM user_profiles WHERE user_id = :user_id")
+                result = await conn.execute(stmt, {"user_id": user_id})
                 row = await result.fetchone()
                 if row:
                     # Convert row to dict
@@ -578,12 +567,11 @@ class DatabaseManager:
                 return None
 
             async with sqlite_engine.connect() as conn:
-                result = await conn.execute(
-                    """SELECT * FROM subscriptions
-                       WHERE user_id = ? AND status IN ('active', 'pending')
-                       ORDER BY created_at DESC LIMIT 1""",
-                    (user_id,)
-                )
+                from sqlalchemy import text
+                stmt = text("""SELECT * FROM subscriptions
+                       WHERE user_id = :user_id AND status IN ('active', 'pending')
+                       ORDER BY created_at DESC LIMIT 1""")
+                result = await conn.execute(stmt, {"user_id": user_id})
                 row = await result.fetchone()
                 if row:
                     return dict(row._mapping)
@@ -631,10 +619,9 @@ class DatabaseManager:
                 return False
 
             async with sqlite_engine.connect() as conn:
-                result = await conn.execute(
-                    "DELETE FROM user_profiles WHERE user_id = ?",
-                    (user_id,)
-                )
+                from sqlalchemy import text
+                stmt = text("DELETE FROM user_profiles WHERE user_id = :user_id")
+                result = await conn.execute(stmt, {"user_id": user_id})
                 await conn.commit()
                 return result.rowcount > 0
 
@@ -657,7 +644,7 @@ class DatabaseManager:
             mongo_success = True
             if self._mongo_connected:
                 mongo_db = self.get_mongo_db()
-                if mongo_db:
+                if mongo_db is not None:
                     result = await mongo_db.users.delete_one({"user_id": user_id})
                     mongo_success = result.deleted_count > 0
 
@@ -692,20 +679,11 @@ class DatabaseManager:
                 return False
 
             async with sqlite_engine.connect() as conn:
-                await conn.execute(
-                    """INSERT INTO subscriptions
+                from sqlalchemy import text
+                stmt = text("""INSERT INTO subscriptions
                        (user_id, plan_type, status, start_date, end_date, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        subscription_data.get('user_id'),
-                        subscription_data.get('plan_type'),
-                        subscription_data.get('status'),
-                        subscription_data.get('start_date'),
-                        subscription_data.get('end_date'),
-                        subscription_data.get('created_at'),
-                        subscription_data.get('updated_at')
-                    )
-                )
+                       VALUES (:user_id, :plan_type, :status, :start_date, :end_date, :created_at, :updated_at)""")
+                await conn.execute(stmt, subscription_data)
                 await conn.commit()
 
             self.logger.info("Subscription created", user_id=subscription_data.get('user_id'))
