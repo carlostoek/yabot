@@ -5,7 +5,7 @@ SubscriptionService
 Implements subscription management functionality as specified
 in Requirement 3.1: Coordinator Service Architecture.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List
 from enum import Enum
 
@@ -189,8 +189,30 @@ class SubscriptionService(LoggerMixin):
             if status == SubscriptionStatus.ACTIVE.value:
                 # Check if subscription hasn't expired
                 end_date = subscription.get("end_date")
-                if end_date and isinstance(end_date, datetime):
-                    if datetime.utcnow() > end_date:
+                if end_date:
+                    # Parse end_date if it's a string (from SQLite)
+                    if isinstance(end_date, str):
+                        try:
+                            # Try to parse ISO format date strings
+                            if '+' in end_date:
+                                # Handle timezone-aware datetime strings
+                                end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                            else:
+                                # Handle timezone-naive datetime strings
+                                end_date = datetime.fromisoformat(end_date)
+                        except Exception as e:
+                            self.logger.warning("Failed to parse end_date", user_id=user_id, end_date=end_date, error=str(e))
+                            # If we can't parse the date, treat as no expiration
+                            self.logger.info("Active subscription found (unparseable expiration date)", user_id=user_id, plan=plan_type)
+                            return True
+
+                    # Convert to UTC if not timezone-aware
+                    if end_date.tzinfo is None:
+                        end_date = end_date.replace(tzinfo=timezone.utc)
+
+                    # Compare with current UTC time
+                    now = datetime.now(timezone.utc)
+                    if now > end_date:
                         # Subscription expired, update status
                         await self.update_subscription_status(user_id, SubscriptionStatus.EXPIRED)
                         self.logger.info("Subscription expired", user_id=user_id)

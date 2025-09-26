@@ -473,9 +473,9 @@ class DatabaseManager:
                 from sqlalchemy import text
                 stmt = text("SELECT * FROM user_profiles WHERE user_id = :user_id")
                 result = await conn.execute(stmt, {"user_id": user_id})
-                row = await result.fetchone()
+                row = result.fetchone()  # Don't use await here, fetchone() is synchronous in SQLAlchemy 2.0+
                 if row:
-                    # Convert row to dict
+                    # Convert row to dict using mapping() method for SQLAlchemy 2.0+
                     return dict(row._mapping)
                 return None
 
@@ -572,7 +572,7 @@ class DatabaseManager:
                        WHERE user_id = :user_id AND status IN ('active', 'pending')
                        ORDER BY created_at DESC LIMIT 1""")
                 result = await conn.execute(stmt, {"user_id": user_id})
-                row = await result.fetchone()
+                row = result.fetchone()  # Don't use await here, fetchone() is synchronous in SQLAlchemy 2.0+
                 if row:
                     return dict(row._mapping)
                 return None

@@ -312,17 +312,18 @@ class CleanIntegrationTester:
         print("\n⏰ Probando expiración de suscripciones...")
 
         # Crear suscripción expirada usando el servicio correcto
-        past_date = datetime.now(timezone.utc) - timedelta(hours=1)
+        start_date = datetime.now(timezone.utc) - timedelta(days=2)  # Started 2 days ago
+        end_date = datetime.now(timezone.utc) - timedelta(days=1)    # Ended 1 day ago (expired)
 
         # Usar el método correcto del DatabaseManager
         subscription_data = {
             "user_id": self.expired_user_id,
             "plan_type": "vip",
             "status": "active",
-            "start_date": past_date,
-            "end_date": past_date,  # Ya expiró
-            "created_at": past_date,
-            "updated_at": past_date
+            "start_date": start_date,
+            "end_date": end_date,  # Expired yesterday
+            "created_at": start_date,
+            "updated_at": start_date
         }
 
         created = await self.db_manager.create_subscription(subscription_data)
