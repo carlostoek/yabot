@@ -176,20 +176,58 @@ class UserLevelData(BaseModel):
    - **User Impact:** Level progression delayed but preserved, user notified of temporary delay
 
 4. **Telegram API Timeout**
-   - **Handling:** Message queuing system with retry logic, fallback to simplified responses
-   - **User Impact:** "Conexión temporal interrumpida. Reintentando..." with automatic retry
+   - **Handling:** Queue actions for retry when connectivity returns, graceful degradation per Requirement 7.5
+   - **User Impact:** "Procesando..." message within 3 seconds or automatic retry when API available
 
 5. **Database Connection Loss**
    - **Handling:** Circuit breaker pattern, local cache fallback, connection pool recovery
    - **User Impact:** Limited functionality with cached data until connection restored
 
+6. **Channel Reaction Detection Failure**
+   - **Handling:** Fallback to polling mode if webhook fails, retry reaction processing
+   - **User Impact:** Reaction detected within 5 seconds as per Requirement 2.3, or notification of delay
+
+7. **Level 2 Pista Purchase Validation Failure**
+   - **Handling:** Re-verify balance before purchase, rollback if insufficient funds
+   - **User Impact:** Clear message if insufficient besitos, "Necesitas 10 besitos para comprar esta pista"
+
+## Requirements Mapping
+
+### Requirement 1 Coverage
+- **EnhancedStartHandler.handle_start_command**: Implements AC 1.1 (2-second response), AC 1.4 (3 Level 1 capabilities)
+- **EnhancedStartHandler.setup_level_1_user**: Implements AC 1.2 (0 besitos), AC 1.3 (empty completed_fragments)
+- **EnhancedStartHandler.get_existing_user_status**: Implements AC 1.5 (return level and balance)
+
+### Requirement 2 Coverage
+- **EnhancedStartHandler.assign_initial_mission**: Implements AC 2.1 ("Reacciona en el Canal Principal")
+- **Mission title and channel specification**: Implements AC 2.2 (@yabot_canal, ❤️ emoji)
+- **ReactionDetector integration**: Implements AC 2.3 (5-second detection), AC 2.4 (completed status)
+- **BesitosWallet integration**: Implements AC 2.5 (10 besitos reward)
+
+### Requirement 3 Coverage
+- **BesitosWallet.add_besitos**: Implements AC 3.1 (10 besitos in 3 seconds), AC 3.3 (atomic transactions)
+- **Transaction recording**: Implements AC 3.2 (mission_id, timestamp, amount)
+- **User notification**: Implements AC 3.4 (exact message format), AC 3.5 (error message)
+
+### Requirement 4 Coverage
+- **PistaShop.get_available_pistas**: Implements AC 4.1 (purchase button when ≥10 besitos)
+- **PistaShop.validate_purchase**: Implements AC 4.2 (balance verification)
+- **PistaShop.purchase_pista**: Implements AC 4.3 (atomic deduction), AC 4.4 (hint unlocking)
+- **LevelProgressionService.handle_pista_purchase**: Implements AC 4.5 (automatic Level 2 unlock)
+
+### Requirement 5 Coverage
+- **LevelProgressionService.unlock_level**: Implements AC 5.1 (2-second progression), AC 5.2 (subscription update)
+- **LevelProgressionHandler.update_user_menu**: Implements AC 5.3 (2+ new menu options)
+- **LevelProgressionHandler.send_level_unlock_message**: Implements AC 5.4 (exact celebration message)
+- **Event publishing**: Implements AC 5.5 (level_progression event with user_id, old_level, new_level)
+
 ## Testing Strategy
 
 ### Unit Testing
-- **LevelProgressionService**: Mock dependencies, test progression logic and level validation
-- **PistaShop**: Test transaction flows, balance validation, and error scenarios
-- **Event Publishing**: Verify event format, delivery, and cross-module integration
-- **Database Operations**: Test atomic transactions and rollback scenarios
+- **LevelProgressionService**: Test progression logic and level validation using real UserService and SubscriptionService (no mocks per CLAUDE.md)
+- **PistaShop**: Test transaction flows, balance validation, and error scenarios with real BesitosWallet
+- **Event Publishing**: Verify event format, delivery, and cross-module integration with real EventBus
+- **Database Operations**: Test atomic transactions and rollback scenarios with real DatabaseManager
 
 ### Integration Testing
 - **Complete User Journey**: End-to-end flow from `/start` to Level 2 unlocking
