@@ -194,116 +194,214 @@ class BesitosWallet:
             TransactionResult with success status and new balance
         """
         try:
-            # Start a MongoDB session for atomic operations
-            async with await self.db.client.start_session() as session:
-                async with session.start_transaction():
-                    # Get current user document with besitos data
-                    user_doc = await self.users_collection.find_one(
-                        {"user_id": user_id},
-                        session=session
-                    )
+            import os
+            # Check if transactions are disabled for testing
+            disable_transactions = os.getenv('DISABLE_MONGO_TRANSACTIONS', 'false').lower() == 'true'
 
-                    # If user doesn't exist, create initial data
-                    if not user_doc:
-                        initial_data = {
-                            "user_id": user_id,
-                            "besitos_balance": 0,
-                            "total_earned_besitos": 0,
-                            "total_spent_besitos": 0,
-                            "created_at": datetime.utcnow(),
-                            "updated_at": datetime.utcnow()
-                        }
-                        await self.users_collection.insert_one(initial_data, session=session)
-                        current_balance = 0
-                    else:
-                        current_balance = user_doc.get("besitos_balance", 0)
+            if disable_transactions:
+                # Use simple non-transactional operations for testing
+                # Get current user document with besitos data
+                user_doc = await self.users_collection.find_one({"user_id": user_id})
 
-                    # Calculate new balance
-                    new_balance = current_balance + amount
-
-                    # Ensure balance doesn't go negative (only for debit operations)
-                    if new_balance < 0:
-                        return TransactionResult(
-                            success=False,
-                            error_message=f"Transaction would result in negative balance: {new_balance}"
-                        )
-
-                    # Update besitos statistics based on the transaction type
-                    update_data = {
-                        "besitos_balance": new_balance,
+                # If user doesn't exist, create initial data
+                if not user_doc:
+                    initial_data = {
+                        "user_id": user_id,
+                        "besitos_balance": 0,
+                        "total_earned_besitos": 0,
+                        "total_spent_besitos": 0,
+                        "created_at": datetime.utcnow(),
                         "updated_at": datetime.utcnow()
                     }
+                    await self.users_collection.insert_one(initial_data)
+                    current_balance = 0
+                else:
+                    current_balance = user_doc.get("besitos_balance", 0)
 
-                    # Update total earned/spent based on transaction direction
-                    if amount > 0:
-                        update_data["total_earned_besitos"] = user_doc.get("total_earned_besitos", 0) + amount
-                        update_data["last_besitos_earned"] = datetime.utcnow()
-                    else:
-                        update_data["total_spent_besitos"] = user_doc.get("total_spent_besitos", 0) + abs(amount)
-                        update_data["last_besitos_spent"] = datetime.utcnow()
+                # Calculate new balance
+                new_balance = current_balance + amount
 
-                    # Update user document
-                    result = await self.users_collection.update_one(
-                        {"user_id": user_id},
-                        {"$set": update_data},
-                        session=session
+                # Ensure balance doesn't go negative
+                if new_balance < 0:
+                    return TransactionResult(
+                        success=False,
+                        error_message=f"Transaction would result in negative balance: {new_balance}"
                     )
 
-                    if result.modified_count == 0:
-                        return TransactionResult(
-                            success=False,
-                            error_message="User document not updated"
+                # Update besitos statistics
+                update_data = {
+                    "besitos_balance": new_balance,
+                    "updated_at": datetime.utcnow()
+                }
+
+                if amount > 0:
+                    update_data["total_earned_besitos"] = user_doc.get("total_earned_besitos", 0) + amount if user_doc else amount
+                    update_data["last_besitos_earned"] = datetime.utcnow()
+                else:
+                    update_data["total_spent_besitos"] = user_doc.get("total_spent_besitos", 0) + abs(amount) if user_doc else abs(amount)
+                    update_data["last_besitos_spent"] = datetime.utcnow()
+
+                # Update user document
+                await self.users_collection.update_one(
+                    {"user_id": user_id},
+                    {"$set": update_data},
+                    upsert=True
+                )
+
+                # Create transaction record
+                transaction_id = f"besitos_{ObjectId()}"
+                transaction_doc_dict = {
+                    "transaction_id": transaction_id,
+                    "user_id": user_id,
+                    "amount": amount,
+                    "transaction_type": transaction_type.value,
+                    "reason": description,
+                    "balance_after": new_balance,
+                    "reference_id": reference_data.get("reference_id") if reference_data else None,
+                    "reference_type": reference_data.get("reference_type") if reference_data else None,
+                    "timestamp": datetime.utcnow(),
+                    "metadata": reference_data or {}
+                }
+
+                # Insert transaction record
+                await self.besitos_transactions_collection.insert_one(transaction_doc_dict)
+
+                self.logger.info(
+                    "Besitos transaction completed (no atomicity)",
+                    user_id=user_id,
+                    amount=amount,
+                    new_balance=new_balance,
+                    transaction_id=transaction_id
+                )
+
+                # Publish event
+                await self._publish_transaction_event(
+                    user_id=user_id,
+                    amount=amount,
+                    transaction_type=transaction_type,
+                    new_balance=new_balance,
+                    transaction_id=transaction_id,
+                    description=description,
+                    reference_data=reference_data
+                )
+
+                return TransactionResult(
+                    success=True,
+                    transaction_id=transaction_id,
+                    new_balance=new_balance,
+                    transaction_data=transaction_doc_dict
+                )
+            else:
+                # Use MongoDB transactions - restore original code
+                async with await self.db.client.start_session() as session:
+                    async with session.start_transaction():
+                        # Get current user document with besitos data
+                        user_doc = await self.users_collection.find_one(
+                            {"user_id": user_id},
+                            session=session
                         )
 
-                    # Create transaction record
-                    transaction_id = f"besitos_{ObjectId()}"
-                    
-                    # Create the transaction document as a dictionary since we can't import the schema at runtime
-                    transaction_doc_dict = {
-                        "transaction_id": transaction_id,
-                        "user_id": user_id,
-                        "amount": amount,
-                        "transaction_type": transaction_type.value,
-                        "reason": description,
-                        "balance_after": new_balance,
-                        "reference_id": reference_data.get("reference_id") if reference_data else None,
-                        "reference_type": reference_data.get("reference_type") if reference_data else None,
-                        "timestamp": datetime.utcnow(),
-                        "metadata": reference_data or {}
-                    }
+                        # If user doesn't exist, create initial data
+                        if not user_doc:
+                            initial_data = {
+                                "user_id": user_id,
+                                "besitos_balance": 0,
+                                "total_earned_besitos": 0,
+                                "total_spent_besitos": 0,
+                                "created_at": datetime.utcnow(),
+                                "updated_at": datetime.utcnow()
+                            }
+                            await self.users_collection.insert_one(initial_data, session=session)
+                            current_balance = 0
+                        else:
+                            current_balance = user_doc.get("besitos_balance", 0)
 
-                    # Insert transaction record
-                    await self.besitos_transactions_collection.insert_one(
-                        transaction_doc_dict,
-                        session=session
-                    )
+                        # Calculate new balance
+                        new_balance = current_balance + amount
 
-                    # Commit transaction (automatic with context manager)
-                    self.logger.info(
-                        "Besitos transaction completed",
-                        user_id=user_id,
-                        amount=amount,
-                        new_balance=new_balance,
-                        transaction_id=transaction_id
-                    )
+                        # Ensure balance doesn't go negative (only for debit operations)
+                        if new_balance < 0:
+                            return TransactionResult(
+                                success=False,
+                                error_message=f"Transaction would result in negative balance: {new_balance}"
+                            )
 
-            # Publish event after successful transaction
-            await self._publish_transaction_event(
-                user_id=user_id,
-                amount=amount,
-                transaction_type=transaction_type,
-                new_balance=new_balance,
-                transaction_id=transaction_id,
-                description=description,
-                reference_data=reference_data
-            )
+                        # Update besitos statistics based on the transaction type
+                        update_data = {
+                            "besitos_balance": new_balance,
+                            "updated_at": datetime.utcnow()
+                        }
 
-            return TransactionResult(
-                success=True,
-                transaction_id=transaction_id,
-                new_balance=new_balance,
-                transaction_data=transaction_doc_dict
-            )
+                        # Update total earned/spent based on transaction direction
+                        if amount > 0:
+                            update_data["total_earned_besitos"] = user_doc.get("total_earned_besitos", 0) + amount
+                            update_data["last_besitos_earned"] = datetime.utcnow()
+                        else:
+                            update_data["total_spent_besitos"] = user_doc.get("total_spent_besitos", 0) + abs(amount)
+                            update_data["last_besitos_spent"] = datetime.utcnow()
+
+                        # Update user document
+                        result = await self.users_collection.update_one(
+                            {"user_id": user_id},
+                            {"$set": update_data},
+                            session=session
+                        )
+
+                        if result.modified_count == 0:
+                            return TransactionResult(
+                                success=False,
+                                error_message="User document not updated"
+                            )
+
+                        # Create transaction record
+                        transaction_id = f"besitos_{ObjectId()}"
+
+                        # Create the transaction document as a dictionary since we can't import the schema at runtime
+                        transaction_doc_dict = {
+                            "transaction_id": transaction_id,
+                            "user_id": user_id,
+                            "amount": amount,
+                            "transaction_type": transaction_type.value,
+                            "reason": description,
+                            "balance_after": new_balance,
+                            "reference_id": reference_data.get("reference_id") if reference_data else None,
+                            "reference_type": reference_data.get("reference_type") if reference_data else None,
+                            "timestamp": datetime.utcnow(),
+                            "metadata": reference_data or {}
+                        }
+
+                        # Insert transaction record
+                        await self.besitos_transactions_collection.insert_one(
+                            transaction_doc_dict,
+                            session=session
+                        )
+
+                        # Commit transaction (automatic with context manager)
+                        self.logger.info(
+                            "Besitos transaction completed",
+                            user_id=user_id,
+                            amount=amount,
+                            new_balance=new_balance,
+                            transaction_id=transaction_id
+                        )
+
+                        # Publish event after successful transaction
+                        await self._publish_transaction_event(
+                            user_id=user_id,
+                            amount=amount,
+                            transaction_type=transaction_type,
+                            new_balance=new_balance,
+                            transaction_id=transaction_id,
+                            description=description,
+                            reference_data=reference_data
+                        )
+
+                        return TransactionResult(
+                            success=True,
+                            transaction_id=transaction_id,
+                            new_balance=new_balance,
+                            transaction_data=transaction_doc_dict
+                        )
 
         except Exception as e:
             self.logger.error(

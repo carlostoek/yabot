@@ -61,8 +61,12 @@ class ReactionDetector:
         self.logger = get_logger(self.__class__.__name__)
         self.error_handler = ErrorHandler()
         # Import database client here to avoid circular imports
-        from src.database.mongodb import get_database_client
-        self.db_client = get_database_client()
+        from motor.motor_asyncio import AsyncIOMotorClient
+        import os
+
+        # Create database client for ReactionDetector
+        db_uri = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/yabot')
+        self.db_client = AsyncIOMotorClient(db_uri)
         self.besitos_wallet = BesitosWallet(self.db_client, event_bus)
         self.api_client = get_cross_module_auth_service()
 

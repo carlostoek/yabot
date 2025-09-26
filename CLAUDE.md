@@ -1,0 +1,1 @@
+- Si existe y está implementado el módulo, función, clase, líneas de código, porción de código o lo que sea que se requiera para realizar un test, queda estrictamente prohibido el uso de mocks y utilizo el código real
