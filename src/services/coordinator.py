@@ -261,10 +261,10 @@ class CoordinatorService(LoggerMixin):
             # If reaction is of positive type, potentially award besitos
             positive_reactions = ["like", "love", "besito"]
             if reaction_type in positive_reactions:
-                # Award besitos for positive reactions
+                # Award 10 besitos for positive reactions (as per requirements)
                 await self.process_besitos_transaction(
                     user_id, 
-                    1, 
+                    10, 
                     BesitosTransactionType.REWARD,
                     f"Reward for {reaction_type} reaction to content {content_id}", **kwargs
                 )
