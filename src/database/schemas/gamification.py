@@ -254,3 +254,20 @@ class TransactionLogMongoSchema(BaseModel):
     
     class Config:
         populate_by_name = True
+
+
+class PistaPurchaseTransaction(BaseModel):
+    """
+    Schema for pista purchase transactions (Requirement 4.3)
+    """
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    transaction_id: str
+    user_id: str
+    pista_id: str
+    cost: int
+    status: str = "pending"  # "pending", "completed", "failed"
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    
+    class Config:
+        populate_by_name = True

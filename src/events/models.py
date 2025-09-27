@@ -777,6 +777,33 @@ class SystemResilienceEvent(BaseModel):
         }
 
 
+class LevelProgressionEvent(BaseEvent):
+    """
+    Event published when user progresses to new level (Requirement 5.5)
+    """
+    event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    event_type: str = "level_progression"
+    user_id: str
+    old_level: int
+    new_level: int
+    trigger_action: str  # "mission_completion", "pista_purchase"
+    payload: Dict[str, Any] = Field(default_factory=dict)
+    source: str = "level_progression_service"
+
+    def __init__(self, **data):
+        super().__init__(
+            event_type="level_progression",
+            timestamp=datetime.utcnow(),
+            **data
+        )
+
+    class Config:
+        json_encoders = {
+            datetime: lambda dt: dt.isoformat(),
+            uuid.UUID: str
+        }
+
+
 # Type aliases for cleaner code
 EventModel = BaseEvent
 UserEvent = UserInteractionEvent
@@ -789,3 +816,4 @@ HintEvent = HintUnlockedEvent
 HealthEvent = SystemHealthEvent
 NotificationEvent = SystemNotificationEvent
 ResilienceEvent = SystemResilienceEvent
+LevelProgressionEventAlias = LevelProgressionEvent

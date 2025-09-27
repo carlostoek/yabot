@@ -19,6 +19,8 @@ from src.core.models import MessageContext, CommandResponse
 from src.utils.logger import get_logger
 from src.database.manager import DatabaseManager
 from src.services.user import UserService
+from src.services.level_progression import LevelProgressionService
+from src.modules.gamification.mission_manager import MissionManager
 from src.events.models import UserInteractionEvent, UserRegistrationEvent
 
 
@@ -26,8 +28,16 @@ class StartCommandHandler(BaseHandler, MessageHandlerMixin):
     """
     Handler for the /start command.
     
-    Implements requirement 2.1: WHEN a user sends /start command THEN the bot 
-    SHALL respond with a welcome message and basic usage instructions
+    Implements requirement 1.1: WHEN a new user sends `/start` command 
+    THEN the system SHALL create a user profile with Level 1 (free) status within 2 seconds
+    Implements requirement 1.2: WHEN user registration occurs 
+    THEN the system SHALL initialize besitos balance to exactly 0 besitos
+    Implements requirement 1.3: WHEN a user is created 
+    THEN the system SHALL set up default narrative progress with empty completed_fragments array
+    Implements requirement 1.4: WHEN registration completes 
+    THEN the system SHALL respond with a welcome message listing exactly 3 Level 1 capabilities
+    Implements requirement 1.5: IF user already exists 
+    THEN the system SHALL return current level number and besitos balance within the response
     Implements requirement 5.3: WHEN a user sends /start command THEN CommandHandler 
     SHALL publish user_interaction event
     """
@@ -42,6 +52,8 @@ class StartCommandHandler(BaseHandler, MessageHandlerMixin):
         from src.events.bus import EventBus
         database_manager = kwargs.get('database_manager')
         user_service = kwargs.get('user_service')
+        level_progression_service = kwargs.get('level_progression_service')
+        mission_manager = kwargs.get('mission_manager')
         event_bus = kwargs.get('event_bus')
         
         # Ensure services are available
@@ -53,25 +65,94 @@ class StartCommandHandler(BaseHandler, MessageHandlerMixin):
         
         user_id = str(message.from_user.id)
         
-        # Check if user exists, create if not
+        # Check if user exists in MongoDB
         user_exists = await database_manager.get_user_from_mongo(user_id)
+        
         if not user_exists:
-            # Create user in database
+            # Create user in database with Level 1 setup
             telegram_user_data = {
                 "id": message.from_user.id,
                 "username": message.from_user.username,
                 "first_name": message.from_user.first_name,
                 "last_name": message.from_user.last_name,
                 "language_code": message.from_user.language_code,
+                "narrative_level": 1,  # Requirement 1.1: Level 1 (free) status
+                "besitos_balance": 0,  # Requirement 1.2: Initialize to 0 besitos
+                "narrative_progress": {  # Requirement 1.3: Default narrative progress
+                    "completed_fragments": [],
+                    "unlocked_hints": [],
+                    "current_position": 0
+                },
+                "created_at": __import__('datetime').datetime.utcnow(),
+                "updated_at": __import__('datetime').datetime.utcnow()
             }
             
             await user_service.create_user(telegram_user_data)
-        
-        welcome_text = (
-            "👋 Hello! Welcome to the bot.\n\n"
-            "I'm here to help you with various tasks. "
-            "Use /menu to see available options or /help for more information."
-        )
+            
+            # Assign initial mission "Reacciona en el Canal Principal" as per requirements
+            if mission_manager:
+                # Define the initial mission for reaction in the channel
+                initial_mission = await mission_manager.assign_mission(
+                    user_id=user_id,
+                    mission_type="reaction", 
+                    title="Reacciona en el Canal Principal",
+                    description="Reacciona con ❤️ en el canal @yabot_canal para completar tu primera misión y ganar 10 besitos",
+                    objectives=[
+                        {
+                            "id": "react_to_channel",
+                            "description": "React with ❤️ in @yabot_canal",
+                            "target": 1,
+                            "type": "reaction_count"
+                        }
+                    ],
+                    reward={
+                        "besitos": 10,
+                        "description": "Reward for first reaction in the main channel"
+                    },
+                    metadata={
+                        "channel_name": "@yabot_canal",
+                        "required_emoji": "❤️"
+                    }
+                )
+                
+                if initial_mission:
+                    self.logger.info(f"Initial mission assigned to new user {user_id}")
+            
+            # Create welcome message with exactly 3 Level 1 capabilities as per requirement 1.4
+            welcome_text = (
+                "👋 ¡Hola! Bienvenido a YABOT.\n\n"
+                "Estás en el <b>Nivel 1</b> y tienes acceso a:\n\n"
+                "1. 📖 <b>Contenido narrativo básico</b>\n"
+                "2. 🎮 <b>Sistema de misiones</b> para ganar besitos\n"
+                "3. 💬 <b>Interacción con personajes</b> del story\n\n"
+                "¡Completa tu primera misión reaccionando con ❤️ en el canal @yabot_canal para ganar 10 besitos!"
+            )
+            
+        else:
+            # User already exists - get current status as per requirement 1.5
+            if level_progression_service:
+                current_level = await level_progression_service.get_user_level(user_id)
+            else:
+                # Fallback to checking MongoDB directly
+                user_doc = await database_manager.get_user_from_mongo(user_id)
+                current_level = user_doc.get("narrative_level", 1) if user_doc else 1
+            
+            # Get besitos balance
+            from src.modules.gamification.besitos_wallet import BesitosWallet
+            besitos_wallet = kwargs.get('besitos_wallet')
+            if besitos_wallet:
+                besitos_balance = await besitos_wallet.get_balance(user_id)
+            else:
+                # Fallback to checking MongoDB directly
+                user_doc = await database_manager.get_user_from_mongo(user_id)
+                besitos_balance = user_doc.get("besitos_balance", 0) if user_doc else 0
+            
+            welcome_text = (
+                f"👋 ¡Hola de nuevo! Bienvenido de vuelta.\n\n"
+                f"Tu nivel actual es: <b>Nivel {current_level}</b>\n"
+                f"Tu saldo de besitos: <b>{besitos_balance} besitos</b>\n\n"
+                "¡Sigue explorando la narrativa y completando misiones!"
+            )
         
         # Publish user interaction event
         if event_bus:

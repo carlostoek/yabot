@@ -53,10 +53,12 @@ class ReactionDetector:
     def __init__(self,
                  event_bus: EventBus,
                  bot: Bot,
+                 mission_manager: Optional['MissionManager'] = None,  # Add mission manager for requirement 2.4
                  config: Optional[ReactionDetectorConfig] = None,
                  redis_config: Optional[RedisConfig] = None):
         self.event_bus = event_bus
         self.bot = bot
+        self.mission_manager = mission_manager  # Add for mission completion processing
         self.config = config or ReactionDetectorConfig()
         self.logger = get_logger(self.__class__.__name__)
         self.error_handler = ErrorHandler()
@@ -323,7 +325,12 @@ class ReactionDetector:
     
     async def _process_channel_reaction(self, update: Update) -> bool:
         """
-        Process reactions to channel posts.
+        Process reactions to channel posts with channel validation.
+        
+        Implements requirement 2.2: WHEN reaction mission is assigned 
+        THEN the system SHALL provide the exact channel name "@yabot_canal" and required emoji "❤️"
+        Implements requirement 2.3: WHEN user reacts with ❤️ in @yabot_canal 
+        THEN the reaction detector SHALL capture the event within 5 seconds
         
         Args:
             update: The Telegram Update object containing channel reaction
@@ -339,9 +346,37 @@ class ReactionDetector:
             user_id = str(channel_post_reaction.user.id) if channel_post_reaction.user else str(channel_post_reaction.actor_chat.id)
             message_id = channel_post_reaction.message_id
             chat_id = channel_post_reaction.chat.id
+            chat_username = channel_post_reaction.chat.username  # Get the chat username for validation
+            
+            # Validate that the reaction is in the expected channel (@yabot_canal)
+            # This implements requirement 2.2: Validate the exact channel name
+            expected_channel = "@yabot_canal"
+            channel_username = f"@{chat_username}" if chat_username else f"@{chat_id}"
+            
+            # Check if this is our expected channel
+            if channel_username != expected_channel and f"@{chat_id}" != expected_channel:
+                self.logger.debug(
+                    "Reaction in different channel, skipping",
+                    user_id=user_id,
+                    channel_username=channel_username,
+                    expected_channel=expected_channel
+                )
+                return True  # This is still valid processing, just not for our mission
             
             # Determine the reaction type
             reaction_type = self._determine_reaction_type(channel_post_reaction.new_reaction)
+            
+            # Validate that this is the required reaction type (❤️)
+            # This implements requirement 2.2: Required emoji validation
+            required_emoji = "❤️"
+            if reaction_type != "love" or "❤️" not in str(channel_post_reaction.new_reaction):
+                self.logger.debug(
+                    "Reaction with non-required emoji, skipping",
+                    user_id=user_id,
+                    reaction_type=reaction_type,
+                    required_emoji=required_emoji
+                )
+                return True  # This is still valid processing, just not for our mission
             
             # Validate that this is a reaction we want to process
             if not reaction_type or (self.config.positive_reaction_types and 
@@ -358,13 +393,21 @@ class ReactionDetector:
                 reaction_type=reaction_type,
                 metadata={
                     'chat_id': chat_id,
+                    'chat_username': channel_username,
                     'message_id': message_id,
-                    'reaction_source': 'channel_post'
+                    'reaction_source': 'channel_post',
+                    'channel_validation': True
                 }
             )
             
             # Publish the reaction event to the event bus
             await self.event_bus.publish("reaction_detected", reaction_event)
+            
+            # Check if this user has an active mission for this channel reaction
+            # This implements requirement 2.4: WHEN valid reaction is detected 
+            # THEN the mission progress SHALL update to "completed" status
+            if hasattr(self, 'mission_manager') and self.mission_manager:
+                await self._process_reaction_mission_completion(user_id, chat_username, required_emoji)
             
             # Trigger rewards if auto reward is enabled
             if self.config.auto_reward_enabled:
@@ -409,6 +452,109 @@ class ReactionDetector:
         
         return "reaction"
     
+    async def _process_reaction_mission_completion(self, user_id: str, channel_username: str, required_emoji: str) -> bool:
+        """
+        Process mission completion when a valid reaction is detected in the correct channel.
+        
+        Implements requirement 2.4: WHEN valid reaction is detected 
+        THEN the mission progress SHALL update to "completed" status
+        Implements requirement 2.5: WHEN reaction mission is completed 
+        THEN the system SHALL award exactly 10 besitos automatically
+        
+        Args:
+            user_id: The user who reacted
+            channel_username: The channel where the reaction occurred
+            required_emoji: The required emoji that was detected
+            
+        Returns:
+            True if mission completion was processed successfully
+        """
+        try:
+            if not self.mission_manager:
+                self.logger.warning("Mission manager not available, skipping mission completion processing")
+                return False
+            
+            # Get the user's active missions to find the "Reacciona en el Canal Principal" mission
+            from src.modules.gamification.mission_manager import MissionStatus
+            active_missions = await self.mission_manager.get_active_missions(user_id)
+            
+            # Find the specific mission for reacting in the main channel
+            target_mission = None
+            for mission in active_missions:
+                if mission.title == "Reacciona en el Canal Principal":
+                    target_mission = mission
+                    break
+            
+            if not target_mission:
+                self.logger.debug(
+                    "User doesn't have the target reaction mission",
+                    user_id=user_id
+                )
+                return False
+            
+            # Validate that the reaction matches mission requirements
+            expected_channel = "@yabot_canal"
+            if channel_username != expected_channel:
+                self.logger.debug(
+                    "Reaction not in required channel for mission",
+                    user_id=user_id,
+                    actual_channel=channel_username,
+                    required_channel=expected_channel
+                )
+                return False
+            
+            # Update mission progress for the reaction objective
+            objective_id = "react_to_channel"
+            progress_update = {
+                "completed": True,
+                "reaction_emoji": required_emoji,
+                "channel": channel_username,
+                "completed_at": datetime.utcnow()
+            }
+            
+            success = await self.mission_manager.update_progress(
+                user_id=user_id,
+                mission_id=target_mission.mission_id,
+                objective_id=objective_id,
+                progress_data=progress_update
+            )
+            
+            if success:
+                self.logger.info(
+                    "Reaction mission progress updated",
+                    user_id=user_id,
+                    mission_id=target_mission.mission_id,
+                    objective_id=objective_id
+                )
+                
+                # Check if the mission is now completed
+                await self.mission_manager._check_mission_completion(user_id, target_mission.mission_id)
+                
+                return True
+            else:
+                self.logger.warning(
+                    "Failed to update mission progress",
+                    user_id=user_id,
+                    mission_id=target_mission.mission_id
+                )
+                return False
+                
+        except Exception as e:
+            self.logger.error(
+                "Error processing reaction mission completion",
+                user_id=user_id,
+                channel_username=channel_username,
+                error=str(e),
+                error_type=type(e).__name__
+            )
+            self.error_handler.handle_error(e, {
+                'user_id': user_id,
+                'channel_username': channel_username,
+                'error': str(e),
+                'error_type': type(e).__name__
+            })
+            return False
+
     async def _trigger_auto_rewards(self, user_id: str, content_id: str, reaction_type: str) -> bool:
         """
         Trigger automatic rewards for positive reactions with cooldown enforcement.
@@ -563,13 +709,14 @@ class ReactionDetector:
 _reaction_detector = None
 
 
-def get_reaction_detector(event_bus: EventBus, bot: Bot, redis_config: Optional[RedisConfig] = None) -> ReactionDetector:
+def get_reaction_detector(event_bus: EventBus, bot: Bot, mission_manager: Optional['MissionManager'] = None, redis_config: Optional[RedisConfig] = None) -> ReactionDetector:
     """
     Get or create the global reaction detector instance.
 
     Args:
         event_bus: The event bus instance
         bot: The aiogram Bot instance
+        mission_manager: Optional mission manager for mission completion processing
         redis_config: Optional Redis configuration for cooldowns
 
     Returns:
@@ -577,7 +724,7 @@ def get_reaction_detector(event_bus: EventBus, bot: Bot, redis_config: Optional[
     """
     global _reaction_detector
     if _reaction_detector is None:
-        _reaction_detector = ReactionDetector(event_bus, bot, redis_config=redis_config)
+        _reaction_detector = ReactionDetector(event_bus, bot, mission_manager=mission_manager, redis_config=redis_config)
     return _reaction_detector
 
 

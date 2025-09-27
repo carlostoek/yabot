@@ -88,6 +88,16 @@ class APIConfig(BaseModel):
     refresh_token_expire_days: int = 7
 
 
+class ChannelConfig(BaseModel):
+    """
+    Configuration model for channel interactions
+    """
+    main_channel: str = "@yabot_canal"
+    required_reaction_emoji: str = "❤️"
+    channel_post_timeout: int = 300  # 5 minutes
+    reaction_detection_timeout: int = 5  # 5 seconds
+
+
 class CommandResponse(BaseModel):
     """
     Model for command responses

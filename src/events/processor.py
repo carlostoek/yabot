@@ -89,6 +89,7 @@ class EventProcessor:
             'user_registration': self._handle_user_registration,
             'content_viewed': self._handle_content_viewed,
             'hint_unlocked': self._handle_hint_unlocked,
+            'level_progression': self._handle_level_progression,
             'system_health': self._handle_system_health,
             'system_notification': self._handle_system_notification
         })
@@ -344,12 +345,71 @@ class EventProcessor:
         logger.info(f"Handling hint unlock", 
                    user_id=event.user_id, 
                    hint_id=event.payload.get('hint_id'))
-        
+
         # Implement business logic for hint unlock
         # This might update user's unlocked hints, charge besitos, etc.
         logger.info(f"Hint unlocked by user", 
                    user_id=event.user_id, 
                    hint_id=event.payload.get('hint_id'))
+    
+    async def _handle_level_progression(self, event: BaseEvent) -> None:
+        """
+        Handle level progression events
+        Implements requirements 6.1: WHEN any user action occurs THEN relevant events SHALL be published to the event bus
+        Implements requirements 6.2: WHEN events are published THEN all subscribed modules SHALL process them without data loss
+        
+        Args:
+            event: Level progression event to process
+        """
+        logger.info(f"Handling level progression event", 
+                   user_id=event.user_id, 
+                   old_level=event.payload.get('old_level'), 
+                   new_level=event.payload.get('new_level'))
+
+        # Implement business logic for level progression
+        # This might trigger notifications to other modules or services
+        old_level = event.payload.get('old_level', 1)
+        new_level = event.payload.get('new_level', 2)
+        user_id = event.user_id
+        trigger_action = event.payload.get('trigger_action', 'unknown')
+        
+        logger.info(f"User {user_id} progressed from level {old_level} to level {new_level} due to {trigger_action}")
+        
+        # In a real implementation, this would trigger:
+        # 1. Update user's level in all relevant systems
+        # 2. Notify narrative module to unlock new content
+        # 3. Notify gamification module to show new features
+        # 4. Send celebration message to the user
+        
+        # Publish related events that other modules might subscribe to
+        if self.event_bus:
+            # Publish celebration event
+            celebration_event = {
+                "event_type": "level_celebration",
+                "user_id": user_id,
+                "level_achieved": new_level,
+                "timestamp": datetime.utcnow().isoformat(),
+                "payload": {
+                    "old_level": old_level,
+                    "new_level": new_level,
+                    "trigger_action": trigger_action
+                }
+            }
+            await self.event_bus.publish("level_celebration", celebration_event)
+            
+            # Publish content unlock event
+            content_unlock_event = {
+                "event_type": "content_unlocked",
+                "user_id": user_id,
+                "level_unlocked": new_level,
+                "timestamp": datetime.utcnow().isoformat(),
+                "payload": {
+                    "for_level": new_level
+                }
+            }
+            await self.event_bus.publish("content_unlocked", content_unlock_event)
+        
+        logger.info(f"Level progression handled for user {user_id}, notifications sent")
     
     async def _handle_system_health(self, event: BaseEvent) -> None:
         """

@@ -858,6 +858,82 @@ class MissionManager:
                 error_type=type(e).__name__
             )
 
+    async def create_level1_reaction_mission(self, user_id: str) -> Optional[Mission]:
+        """
+        Create and assign the Level 1 reaction mission template
+        Implements requirements 2.1: WHEN a Level 1 user completes onboarding 
+        THEN the system SHALL assign a mission titled "Reacciona en el Canal Principal"
+        Implements requirement 2.2: WHEN reaction mission is assigned 
+        THEN the system SHALL provide the exact channel name "@yabot_canal" and required emoji "❤️"
+        
+        Args:
+            user_id: User identifier to assign the mission to
+
+        Returns:
+            Mission object if successfully created, None otherwise
+        """
+        try:
+            # Define the Level 1 reaction mission with required specifications
+            mission_title = "Reacciona en el Canal Principal"
+            mission_description = "Reacciona con ❤️ en el canal @yabot_canal para completar tu primera misión y ganar 10 besitos"
+            
+            # Create mission objectives as required
+            objectives = [
+                {
+                    "id": "react_to_channel",
+                    "description": "React with ❤️ in @yabot_canal",
+                    "target": 1,
+                    "type": "reaction_count"
+                }
+            ]
+            
+            # Define the reward (10 besitos as per requirement 2.5)
+            reward = {
+                "besitos": 10,
+                "description": "Recompensa por primera reacción en el canal principal"
+            }
+            
+            # Add metadata with the exact channel name and emoji as required by requirement 2.2
+            metadata = {
+                "channel_name": "@yabot_canal",
+                "required_emoji": "❤️",
+                "mission_for_level": 1
+            }
+            
+            # Assign the mission using the existing assign_mission method
+            mission = await self.assign_mission(
+                user_id=user_id,
+                mission_type=MissionType.REACTION,
+                title=mission_title,
+                description=mission_description,
+                objectives=objectives,
+                reward=reward,
+                metadata=metadata
+            )
+            
+            if mission:
+                self.logger.info(
+                    "Level 1 reaction mission assigned successfully",
+                    user_id=user_id,
+                    mission_id=mission.mission_id
+                )
+                return mission
+            else:
+                self.logger.error(
+                    "Failed to assign Level 1 reaction mission",
+                    user_id=user_id
+                )
+                return None
+                
+        except Exception as e:
+            self.logger.error(
+                "Error creating Level 1 reaction mission",
+                user_id=user_id,
+                error=str(e),
+                error_type=type(e).__name__
+            )
+            return None
+
     async def _publish_mission_event(self, user_id: str, mission_id: str, 
                                    event_type: str, mission_data: Dict[str, Any]) -> None:
         """

@@ -11,36 +11,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
-
-# For production, the jwt module would be imported, but for this implementation
-# we'll define a simplified version to avoid dependency issues in testing
-try:
-    import jwt
-except ImportError:
-    # Create a simple mock for JWT functionality in testing environments
-    class MockJWT:
-        def encode(self, payload, key, algorithm):
-            # Simple encoding for testing - in production use real JWT
-            import json
-            import base64
-            # This is just for testing purposes, not secure
-            payload_str = json.dumps(payload)
-            encoded = base64.b64encode(payload_str.encode()).decode()
-            return f"mock_token_{encoded}"
-        
-        def decode(self, token, key, algorithms):
-            # Simple decoding for testing - in production use real JWT
-            import json
-            import base64
-            if token.startswith("mock_token_"):
-                encoded_part = token[11:]  # Remove "mock_token_"
-                decoded = base64.b64decode(encoded_part).decode()
-                return json.loads(decoded)
-            raise Exception("Invalid token format")
-    
-    jwt = MockJWT()
-    jwt.ExpiredSignatureError = Exception
-    jwt.InvalidTokenError = Exception
+import jwt
 
 from src.config.manager import get_config_manager
 from src.utils.logger import get_logger

@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from dotenv import load_dotenv
 
 # Import the models from the core module
-from src.core.models import BotConfig, WebhookConfig, LoggingConfig, DatabaseConfig, RedisConfig, APIConfig
+from src.core.models import BotConfig, WebhookConfig, LoggingConfig, DatabaseConfig, RedisConfig, APIConfig, ChannelConfig
 
 
 class ConfigManager:
@@ -34,6 +34,7 @@ class ConfigManager:
         self.database_config = self._load_database_config()
         self.redis_config = self._load_redis_config()
         self.api_config = self._load_api_config()
+        self.channel_config = self._load_channel_config()
         
         # Validate all configurations
         self.validate_config()
@@ -183,6 +184,27 @@ class ConfigManager:
         except Exception as e:
             logging.error(f"Error loading API configuration: {e}")
             raise
+
+    def _load_channel_config(self) -> 'ChannelConfig':
+        """
+        Load channel configuration from environment variables
+        """
+        from src.core.models import ChannelConfig
+        
+        try:
+            channel_config = ChannelConfig(
+                main_channel=os.getenv("MAIN_CHANNEL", "@yabot_canal"),
+                required_reaction_emoji=os.getenv("REQUIRED_REACTION_EMOJI", "❤️"),
+                channel_post_timeout=int(os.getenv("CHANNEL_POST_TIMEOUT", "300")),
+                reaction_detection_timeout=int(os.getenv("REACTION_DETECTION_TIMEOUT", "5"))
+            )
+            return channel_config
+        except ValidationError as e:
+            logging.error(f"Error validating channel configuration: {e}")
+            raise
+        except Exception as e:
+            logging.error(f"Error loading channel configuration: {e}")
+            raise
     
     def get_bot_token(self) -> str:
         """
@@ -219,6 +241,12 @@ class ConfigManager:
         Get internal API configuration
         """
         return self.api_config
+
+    def get_channel_config(self) -> 'ChannelConfig':
+        """
+        Get channel configuration
+        """
+        return self.channel_config
     
     def validate_config(self) -> bool:
         """
@@ -246,6 +274,12 @@ class ConfigManager:
         # Validate Redis configuration
         if not self.redis_config.url:
             errors.append("REDIS_URL is required")
+        
+        # Validate channel configuration
+        if not self.channel_config.main_channel:
+            errors.append("MAIN_CHANNEL is required")
+        if not self.channel_config.required_reaction_emoji:
+            errors.append("REQUIRED_REACTION_EMOJI is required")
         
         # Log any validation errors
         if errors:

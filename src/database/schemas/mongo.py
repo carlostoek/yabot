@@ -79,6 +79,9 @@ class UserMongoSchema(BaseModel):
     # Narrative fields (Requirements 1.2, 6.2)
     narrative_progress: Optional[NarrativeProgress] = Field(default_factory=NarrativeProgress)
     
+    # Narrative level field (Requirement 5.2)
+    narrative_level: int = 1
+    
     # Administration fields (Requirement 3.1)
     is_admin: bool = False
     access_level: str = "user"  # "user", "moderator", "admin", "super_admin"
