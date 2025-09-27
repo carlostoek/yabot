@@ -109,27 +109,42 @@ class BesitosWallet:
             )
             return 0
 
-    async def add_besitos(self, user_id: str, amount: int, transaction_type: BesitosTransactionType,
-                         description: str = "", reference_data: Optional[Dict[str, Any]] = None) -> TransactionResult:
+from pydantic import BaseModel, validator
+
+class BesitosTransactionRequest(BaseModel):
+    user_id: str
+    amount: int
+    transaction_type: BesitosTransactionType
+    description: str = ""
+    reference_data: Optional[Dict[str, Any]] = None
+    
+    @validator('user_id')
+    def validate_user_id(cls, v):
+        if not v or not v.strip():
+            raise ValueError('User ID cannot be empty')
+        if not v.isdigit():
+            raise ValueError('User ID must contain only digits')
+        return v
+    
+    @validator('amount')
+    def validate_amount(cls, v):
+        if v <= 0:
+            raise ValueError('Amount must be positive')
+        if v > 1000000:  # Reasonable upper limit
+            raise ValueError('Amount exceeds maximum allowed')
+        return v
+
+    async def add_besitos(self, request: BesitosTransactionRequest) -> TransactionResult:
         """
         Add besitos to a user's balance (credit operation)
         Implements atomic transaction with MongoDB session
 
         Args:
-            user_id: User identifier
-            amount: Amount of besitos to add (must be positive)
-            transaction_type: Type of transaction
-            description: Description of the transaction
-            reference_data: Optional reference data (mission_id, achievement_id, etc.)
+            request: Validated transaction request
 
         Returns:
             TransactionResult with success status and new balance
         """
-        if amount <= 0:
-            return TransactionResult(
-                success=False,
-                error_message=f"Amount must be positive, got {amount}"
-            )
 
         return await self._perform_transaction(
             user_id=user_id,
