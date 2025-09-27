@@ -60,16 +60,29 @@ class UserInteractionRequest(BaseModel):
             raise ValueError(f'Action must be one of: {valid_actions}')
         return v
 
-async def process_user_interaction(self, request: UserInteractionRequest, **kwargs) -> Dict[str, Any]:
+    async def process_user_interaction(self, user_id: str, action: str, **kwargs) -> Dict[str, Any]:
         """
         Handle user interaction workflows
         
         Args:
-            request: Validated user interaction request
+            user_id: Telegram user ID
+            action: Type of interaction action
             
         Returns:
             Result of the interaction processing
         """
+        # Validate using the Pydantic model
+        try:
+            request = UserInteractionRequest(
+                user_id=user_id,
+                action=action
+            )
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Invalid interaction request: {str(e)}"
+            }
+        
         event_bus = kwargs.get('event_bus')
         try:
             self.logger.info("Processing user interaction", user_id=request.user_id, action=request.action)

@@ -134,18 +134,43 @@ class BesitosTransactionRequest(BaseModel):
             raise ValueError('Amount exceeds maximum allowed')
         return v
 
-async def add_besitos(self, request: BesitosTransactionRequest) -> TransactionResult:
+    async def add_besitos(self, user_id: str, amount: int, transaction_type: BesitosTransactionType,
+                         description: str = "", reference_data: Optional[Dict[str, Any]] = None) -> TransactionResult:
         """
         Add besitos to a user's balance (credit operation)
         Implements atomic transaction with MongoDB session
 
         Args:
-            request: Validated transaction request
+            user_id: User identifier
+            amount: Amount of besitos to add (must be positive)
+            transaction_type: Type of transaction
+            description: Description of the transaction
+            reference_data: Optional reference data (mission_id, achievement_id, etc.)
 
         Returns:
             TransactionResult with success status and new balance
         """
-
+        if amount <= 0:
+            return TransactionResult(
+                success=False,
+                error_message=f"Amount must be positive, got {amount}"
+            )
+        
+        # Validate using the Pydantic model
+        try:
+            request = BesitosTransactionRequest(
+                user_id=user_id,
+                amount=amount,
+                transaction_type=transaction_type,
+                description=description,
+                reference_data=reference_data
+            )
+        except Exception as e:
+            return TransactionResult(
+                success=False,
+                error_message=f"Invalid transaction request: {str(e)}"
+            )
+        
         return await self._perform_transaction(
             user_id=request.user_id,
             amount=request.amount,
