@@ -60,7 +60,7 @@ class UserInteractionRequest(BaseModel):
             raise ValueError(f'Action must be one of: {valid_actions}')
         return v
 
-    async def process_user_interaction(self, request: UserInteractionRequest, **kwargs) -> Dict[str, Any]:
+async def process_user_interaction(self, request: UserInteractionRequest, **kwargs) -> Dict[str, Any]:
         """
         Handle user interaction workflows
         
@@ -76,40 +76,40 @@ class UserInteractionRequest(BaseModel):
             
             # Create interaction event
             event = UserInteractionEvent(
-                user_id=user_id,
-                action=action,
+                user_id=request.user_id,
+                action=request.action,
                 context={"processed_at": datetime.utcnow().isoformat()}
             )
             
             # Add to event buffer for ordering
-            await self.add_to_event_buffer(user_id, event)
+            await self.add_to_event_buffer(request.user_id, event)
             
             # Process different types of interactions
-            if action == "start":
-                result = await self._handle_start_interaction(user_id)
-            elif action == "narrative":
-                result = await self._handle_narrative_interaction(user_id)
-            elif action == "subscription":
-                result = await self._handle_subscription_interaction(user_id)
-            elif action == "reaction":
-                result = await self._handle_reaction_interaction(user_id)
+            if request.action == "start":
+                result = await self._handle_start_interaction(request.user_id)
+            elif request.action == "narrative":
+                result = await self._handle_narrative_interaction(request.user_id)
+            elif request.action == "subscription":
+                result = await self._handle_subscription_interaction(request.user_id)
+            elif request.action == "reaction":
+                result = await self._handle_reaction_interaction(request.user_id)
             else:
-                result = {"status": "handled", "action": action, "user_id": user_id}
+                result = {"status": "handled", "action": request.action, "user_id": request.user_id}
             
             # Publish interaction processed event
             if event_bus:
                 await event_bus.publish("user_interaction_processed", {
-                    "user_id": user_id,
-                    "action": action,
+                    "user_id": request.user_id,
+                    "action": request.action,
                     "result": result,
                     "processed_at": datetime.utcnow()
                 })
             
-            self.logger.info("User interaction processed successfully", user_id=user_id, action=action)
+            self.logger.info("User interaction processed successfully", user_id=request.user_id, action=request.action)
             return result
                 
         except Exception as e:
-            self.logger.error(f"Error processing user interaction: {str(e)}", user_id=user_id, action=action)
+            self.logger.error(f"Error processing user interaction: {str(e)}", user_id=request.user_id, action=request.action)
             raise
     
     async def validate_vip_access(self, user_id: str) -> bool:

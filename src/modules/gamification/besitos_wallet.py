@@ -134,7 +134,7 @@ class BesitosTransactionRequest(BaseModel):
             raise ValueError('Amount exceeds maximum allowed')
         return v
 
-    async def add_besitos(self, request: BesitosTransactionRequest) -> TransactionResult:
+async def add_besitos(self, request: BesitosTransactionRequest) -> TransactionResult:
         """
         Add besitos to a user's balance (credit operation)
         Implements atomic transaction with MongoDB session
@@ -147,11 +147,11 @@ class BesitosTransactionRequest(BaseModel):
         """
 
         return await self._perform_transaction(
-            user_id=user_id,
-            amount=amount,
-            transaction_type=transaction_type,
-            description=description,
-            reference_data=reference_data
+            user_id=request.user_id,
+            amount=request.amount,
+            transaction_type=request.transaction_type,
+            description=request.description,
+            reference_data=request.reference_data
         )
 
     async def spend_besitos(self, user_id: str, amount: int, transaction_type: BesitosTransactionType,
