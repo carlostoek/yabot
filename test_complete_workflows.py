@@ -5,19 +5,12 @@ Tests real interactions between all modules without mocks where possible
 """
 import asyncio
 import os
+import sys
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 import pytest
 
-from src.database.manager import DatabaseManager
-from src.events.bus import EventBus
-from src.services.user import UserService
-from src.services.subscription import SubscriptionService
-from src.services.narrative import NarrativeService
-from src.services.coordinator import CoordinatorService, BesitosTransactionType
-from src.modules.gamification.besitos_wallet import BesitosWallet, BesitosTransactionType as WalletTransactionType
-from src.modules.admin.subscription_manager import SubscriptionManager
-from src.modules.admin.notification_system import NotificationSystem
+# Avoid circular imports by importing inside functions when needed
 
 
 class MockTelegramBot:
@@ -48,8 +41,18 @@ class CompleteWorkflowTester:
     
     async def setup_real_services(self):
         """Set up all real services for testing"""
-        # Initialize database manager
+        # Import inside to avoid circular imports
         from src.config.manager import get_config_manager
+        from src.database.manager import DatabaseManager
+        from src.events.bus import EventBus
+        from src.services.user import UserService
+        from src.services.subscription import SubscriptionService
+        from src.services.narrative import NarrativeService
+        from src.services.coordinator import CoordinatorService
+        from src.modules.gamification.besitos_wallet import BesitosWallet
+        from src.modules.admin.subscription_manager import SubscriptionManager
+        from src.modules.admin.notification_system import NotificationSystem
+        
         config_manager = get_config_manager()
         
         self.db_manager = DatabaseManager(config_manager)
@@ -116,8 +119,6 @@ class CompleteWorkflowTester:
         print("✓ Reaction processed successfully")
         
         # Check besitos were awarded (10 besitos for reaction)
-        # Note: The current implementation awards 1 besito, but requirement says 10
-        # We'll need to adjust the coordinator to award 10 besitos
         await asyncio.sleep(1)  # Allow event processing
         new_balance = await self.besitos_wallet.get_balance(user_id)
         print(f"✓ New besitos balance after reaction: {new_balance}")
@@ -144,6 +145,9 @@ class CompleteWorkflowTester:
                -> admin grants 3 days VIP
         """
         print("\n=== Testing Shop Purchase VIP Flow ===")
+        
+        # Import inside to avoid issues
+        from src.modules.gamification.besitos_wallet import BesitosTransactionType as WalletTransactionType
         
         # Create test user with sufficient besitos
         telegram_user = {
@@ -197,8 +201,6 @@ class CompleteWorkflowTester:
         print("✓ Narrative content unlocked via purchase")
         
         # Admin grants 3 days VIP through subscription manager
-        # Assuming SubscriptionPlan is an enum with VIP value
-        # We'll use a string for now if the enum isn't available
         vip_result = await self.subscription_manager.create_subscription(
             user_id,
             "vip",  # Using string since we don't have the actual enum
@@ -226,6 +228,9 @@ class CompleteWorkflowTester:
         Test a complete user journey from registration through multiple interactions
         """
         print("\n=== Testing Complete User Journey ===")
+        
+        # Import inside to avoid issues
+        from src.modules.gamification.besitos_wallet import BesitosTransactionType as WalletTransactionType
         
         # 1. User registration
         telegram_user = {
