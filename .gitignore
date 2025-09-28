@@ -170,3 +170,6 @@ temp/
 *.backup
 *.bak
 *~
+.aider*
+.env
+.env

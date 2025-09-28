@@ -11,7 +11,7 @@ from src.core.error_handler import setup_error_handlers
 from src.handlers.commands.start_handler import router as start_router
 
 
-def def setup_routers(dp: Dispatcher) -> None:
+def setup_routers(dp: Dispatcher) -> None:
     """
     Setup all routers for the dispatcher.
 
