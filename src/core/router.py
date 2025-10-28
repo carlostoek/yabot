@@ -2,20 +2,66 @@
 Router component for the Telegram bot framework.
 """
 
+import sys
 from typing import Dict, Callable, Any, Optional, List
 from src.utils.logger import get_logger
+from src.services.user import UserService
+from src.events.bus import EventBus
+from src.database.manager import DatabaseManager
 
 logger = get_logger(__name__)
 
 
 class Router:
-    """Routes incoming messages to appropriate handlers based on message type and content."""
+    """Routes incoming messages to appropriate handlers based on message type and content.
     
-    def __init__(self):
-        """Initialize the router."""
+    The Router can be enhanced with database context to provide handlers with access to
+    database operations, event publishing, and other services. When handlers are registered,
+    they can optionally accept a 'router' parameter to access these services.
+    """
+    
+    def __init__(self, user_service: Optional[UserService] = None, 
+                 event_bus: Optional[EventBus] = None,
+                 database_manager: Optional[DatabaseManager] = None):
+        """Initialize the router with optional database context.
+        
+        Args:
+            user_service (UserService, optional): User service for database operations
+            event_bus (EventBus, optional): Event bus for publishing events
+            database_manager (DatabaseManager, optional): Database manager for direct database access
+        """
         self._command_handlers: Dict[str, Callable] = {}
         self._message_handlers: List[tuple] = []  # (filter, handler) tuples
         self._default_handler: Optional[Callable] = None
+        self.user_service = user_service
+        self.event_bus = event_bus
+        self.database_manager = database_manager
+    
+    @property
+    def has_database_context(self) -> bool:
+        """Check if the router has database context available.
+        
+        Returns:
+            bool: True if database context is available, False otherwise
+        """
+        # Check if we have at least one database-related service available
+        has_user_service = self.user_service is not None
+        has_db_manager = (self.database_manager is not None and 
+                         hasattr(self.database_manager, 'is_connected') and 
+                         self.database_manager.is_connected)
+        return has_user_service or has_db_manager
+    
+    @property
+    def has_event_context(self) -> bool:
+        """Check if the router has event bus context available.
+        
+        Returns:
+            bool: True if event bus context is available, False otherwise
+        """
+        # Check if event bus is available and connected
+        return (self.event_bus is not None and 
+               hasattr(self.event_bus, 'is_connected') and 
+               self.event_bus.is_connected)
     
     def register_command_handler(self, command: str, handler: Callable) -> None:
         """Register command handlers.
@@ -28,7 +74,7 @@ class Router:
             raise TypeError("Handler must be callable")
         
         self._command_handlers[command] = handler
-        logger.info("Registered command handler for: /%s", command)
+        logger.info("Registered command handler for: /%s (total handlers: %d)", command, len(self._command_handlers))
     
     def register_message_handler(self, message_filter: Any, handler: Callable) -> None:
         """Register message handlers.
@@ -64,26 +110,50 @@ class Router:
         Returns:
             Any: The response from the handler
         """
+        logger.debug("Routing update: %s", update)
+        
         # Check if this is a command
         command = self._extract_command(update)
         if command:
+            logger.debug("Found command: %s", command)
+            logger.debug("Available handlers: %s", list(self._command_handlers.keys()))
             handler = self._command_handlers.get(command)
             if handler:
                 logger.info("Routing command /%s to handler", command)
-                return await handler(update)
+                # Pass router context to handler if it accepts it
+                import inspect
+                handler_signature = inspect.signature(handler)
+                if 'router' in handler_signature.parameters:
+                    return await handler(update, router=self)
+                else:
+                    return await handler(update)
             else:
-                logger.info("No handler found for command /%s", command)
+                logger.info("No handler found for command /%s. Available handlers: %s", command, list(self._command_handlers.keys()))
+        else:
+            logger.debug("No command found in update")
         
         # Check message handlers
         for message_filter, handler in self._message_handlers:
             if await self._matches_filter(update, message_filter):
                 logger.info("Routing message to handler with filter %s", type(message_filter).__name__)
-                return await handler(update)
+                # Pass router context to handler if it accepts it
+                import inspect
+                handler_signature = inspect.signature(handler)
+                if 'router' in handler_signature.parameters:
+                    return await handler(update, router=self)
+                else:
+                    return await handler(update)
         
         # Use default handler if no specific handler matched
         if self._default_handler:
             logger.info("Routing to default handler")
-            return await self._default_handler(update)
+            # Pass router context to handler if it accepts it
+            import inspect
+            handler_signature = inspect.signature(self._default_handler)
+            if 'router' in handler_signature.parameters:
+                return await self._default_handler(update, router=self)
+            else:
+                return await self._default_handler(update)
         
         # No handler available
         logger.warning("No handler found for update")
@@ -100,11 +170,50 @@ class Router:
         """
         # This is a simplified implementation
         # In a real implementation, this would extract the command from the Telegram update
-        if hasattr(update, 'message') and hasattr(update.message, 'text'):
-            text = update.message.text
+        logger.debug("Extracting command from update type: %s", type(update).__name__)
+        
+        # Handle direct Message objects (aiogram dispatcher might pass these directly)
+        if hasattr(update, 'text') and update.text:
+            logger.debug("Update appears to be a direct Message object")
+            text = update.text
+            logger.debug("Checking for command in message text: '%s'", text)
             if text.startswith('/'):
                 # Extract command name (everything after / and before any spaces)
-                return text[1:].split(' ')[0].lower()
+                command = text[1:].split(' ')[0].lower()
+                logger.debug("Extracted command: '%s' from text: '%s'", command, text)
+                return command
+            else:
+                logger.debug("Message text does not start with '/': '%s'", text)
+        
+        # Handle aiogram Update objects which may contain message directly
+        message = None
+        if hasattr(update, 'message') and update.message:
+            message = update.message
+        elif hasattr(update, 'callback_query') and update.callback_query and hasattr(update.callback_query, 'message'):
+            message = update.callback_query.message
+        
+        if message:
+            logger.debug("Found message in update")
+            if hasattr(message, 'text') and message.text:
+                text = message.text
+                logger.debug("Checking for command in message text: '%s'", text)
+                if text.startswith('/'):
+                    # Extract command name (everything after / and before any spaces)
+                    command = text[1:].split(' ')[0].lower()
+                    logger.debug("Extracted command: '%s' from text: '%s'", command, text)
+                    return command
+                else:
+                    logger.debug("Message text does not start with '/': '%s'", text)
+            else:
+                logger.debug("Message has no text attribute or text is empty")
+                if hasattr(message, '__dict__'):
+                    logger.debug("Message attributes: %s", list(message.__dict__.keys()))
+        else:
+            logger.debug("No message found in update")
+            if hasattr(update, '__dict__'):
+                logger.debug("Update attributes: %s", list(update.__dict__.keys()))
+        
+        logger.debug("No command found in update")
         return None
     
     async def _matches_filter(self, update: Any, message_filter: Any) -> bool:

@@ -9,7 +9,7 @@ pytest-timeout==2.1.0
 
 # Security testing
 bandit==1.7.5
-safety==2.3.5
+safety
 semgrep==1.30.0
 
 # Performance testing
