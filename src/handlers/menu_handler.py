@@ -44,8 +44,21 @@ class MenuHandlerSystem(BaseHandler):
         return None
 
     async def handle_start_command(self, message: Message) -> None:
-        """Handle /start command."""
+        """Handle /start command - displays the main interface using the menu system coordinator."""
         logger.info(f"handle_start_command called for user {message.from_user.id}")
+
+        # If we have a coordinator service available, use it for enhanced performance and tracking
+        if self.coordinator_service:
+            logger.info("Using MenuSystemCoordinator for enhanced /start command processing")
+            result = await self.coordinator_service.handle_menu_command(message)
+            if result.get("success"):
+                logger.info(f"MenuSystemCoordinator successfully handled /start for user {message.from_user.id}")
+                return
+            else:
+                logger.warning(f"MenuSystemCoordinator failed for user {message.from_user.id}: {result.get('error')}")
+                # Fall back to direct menu handling
+
+        # Fallback to direct menu handling if coordinator is not available
         await self.handle_menu_command_impl(message)
 
     async def handle_menu_command(self, message: Message) -> None:
@@ -62,8 +75,10 @@ class MenuHandlerSystem(BaseHandler):
     async def handle_menu_command_impl(self, message: Message) -> None:
         """
         Handles menu-related commands, sends the menu, and tracks the message.
+        This implementation provides direct menu handling when the coordinator is not available.
         """
         if not message.from_user:
+            logger.warning("Received message without user information")
             return
 
         # Check if bot instance is available
@@ -77,59 +92,106 @@ class MenuHandlerSystem(BaseHandler):
 
         logger.info(f"Handling command '{command}' for user {user_id} in chat {chat_id}")
 
+        # Clean up previous messages for better UX
         await self.cleanup_previous_messages(chat_id)
 
         try:
-            telegram_user = message.from_user.model_dump()
+            # Get enhanced user context with role validation and permissions
             user_context = await self.user_service.get_enhanced_user_menu_context(user_id)
+
+            # Validate user has basic access permissions
+            if not user_context:
+                logger.error(f"No user context available for user {user_id}")
+                sent_msg = await self.message_manager.bot.send_message(
+                    chat_id,
+                    "🔒 Unable to access your profile. Please try again or contact support."
+                )
+                await self.message_manager.track_message(sent_msg.chat.id, sent_msg.message_id, 'error_message')
+                return
+
+            # Log user context for debugging
+            logger.debug(f"User context for {user_id}: role={user_context.get('role')}, vip={user_context.get('has_vip')}, level={user_context.get('narrative_level')}")
+
         except Exception as e:
             logger.error(f"Error getting user context for {user_id}: {e}", exc_info=True)
-            sent_msg = await self.message_manager.bot.send_message(chat_id, "Error retrieving your profile.")
+            sent_msg = await self.message_manager.bot.send_message(
+                chat_id,
+                "❌ Error retrieving your profile. Please try again."
+            )
             await self.message_manager.track_message(sent_msg.chat.id, sent_msg.message_id, 'error_message')
             return
 
-        # Track evaluation before generating menu
-        await self._track_lucien_evaluation(user_id, command, {"message": message.model_dump_json(), "user_context": user_context})
+        # Track evaluation before generating menu for worthiness assessment
+        await self._track_lucien_evaluation(user_id, command, {
+            "message": message.model_dump_json(),
+            "user_context": user_context,
+            "command_type": "menu_access"
+        })
 
-        # Determine menu type based on command
-        menu_id = "main_menu"  # Default to main menu
+        # Determine menu type based on command using centralized routing
+        menu_id = "main_menu"  # Default to main menu for /start and /menu
         if command:
             # Remove the slash and get the menu ID from configuration
             clean_command = command.lstrip('/')
+            from src.ui.menu_config import menu_system_config
             menu_id = menu_system_config.get_routing_rule(clean_command)
+            logger.debug(f"Command '{clean_command}' routed to menu '{menu_id}'")
 
+        # Generate menu using the factory with user context and role validation
         menu = await self.get_menu_for_context(user_context, menu_id)
         if not menu:
-            sent_msg = await self.message_manager.bot.send_message(chat_id, "Could not generate a menu.")
+            logger.error(f"Failed to generate menu '{menu_id}' for user {user_id}")
+            sent_msg = await self.message_manager.bot.send_message(
+                chat_id,
+                "⚠️ Could not generate the menu. Please try again."
+            )
             await self.message_manager.track_message(sent_msg.chat.id, sent_msg.message_id, 'error_message')
             return
 
-        # Render and send the menu directly
+        # Render the menu with proper formatting and accessibility
         text, reply_markup = self._render_menu_parts(menu)
+
         try:
+            # Send the main interface menu with enhanced formatting
             sent_menu_msg = await self.message_manager.bot.send_message(
                 chat_id=chat_id,
                 text=text,
                 reply_markup=reply_markup,
-                parse_mode="HTML"
-            )
-        except Exception as e:
-            logger.error(f"Failed to send message: {e}")
-            # Try to send a simple message without markup
-            sent_menu_msg = await self.message_manager.bot.send_message(
-                chat_id=chat_id,
-                text="Error displaying menu. Please try again."
+                parse_mode="HTML",
+                disable_web_page_preview=True
             )
 
-        # Track the new menu message, marking it as the main menu
+            logger.info(f"Successfully sent main interface menu to user {user_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to send menu message to user {user_id}: {e}")
+            # Fallback: send simple message without markup
+            try:
+                sent_menu_msg = await self.message_manager.bot.send_message(
+                    chat_id=chat_id,
+                    text="🏠 Tu Mundo con Diana\n\nBienvenido a tu espacio personal. Si ves este mensaje, hay un problema temporal con la interfaz. Por favor, intenta nuevamente en unos momentos."
+                )
+            except Exception as fallback_error:
+                logger.critical(f"Failed to send fallback message to user {user_id}: {fallback_error}")
+                return
+
+        # Track the new menu message with proper classification
         await self.message_manager.track_message(
             sent_menu_msg.chat.id,
             sent_menu_msg.message_id,
             'main_menu',
-            is_main_menu=True
+            is_main_menu=(menu_id == 'main_menu')
         )
 
-        await self.event_bus.publish("menu_command_handled", {"user_id": user_id, "command": command})
+        # Publish event for analytics and system monitoring
+        await self.event_bus.publish("menu_command_handled", {
+            "user_id": user_id,
+            "command": command,
+            "menu_id": menu_id,
+            "user_role": user_context.get('role'),
+            "has_vip": user_context.get('has_vip'),
+            "timestamp": message.date.isoformat() if message.date else None
+        })
 
     async def handle_callback(self, query: CallbackQuery) -> None:
         """
@@ -216,17 +278,42 @@ class MenuHandlerSystem(BaseHandler):
         """
         (Placeholder) Renders a Menu object into its text and markup parts.
         """
-        text = f"<b>{menu.title}</b>\n\n{menu.description}"
-        if menu.header_text:
-            text = f"{menu.header_text}\n\n{text}"
-        if menu.footer_text:
-            text = f"{text}\n\n<i>{menu.footer_text}</i>"
+        # Handle both Menu objects and dictionaries
+        if hasattr(menu, 'title'):
+            menu_title = menu.title
+            menu_description = getattr(menu, 'description', '')
+            menu_header_text = getattr(menu, 'header_text', '')
+            menu_footer_text = getattr(menu, 'footer_text', '')
+            menu_max_columns = getattr(menu, 'max_columns', 2)
+            menu_items = getattr(menu, 'items', [])
+        else:
+            # Assume it's a dictionary
+            menu_title = menu.get('title', 'Menu')
+            menu_description = menu.get('description', '')
+            menu_header_text = menu.get('header_text', '')
+            menu_footer_text = menu.get('footer_text', '')
+            menu_max_columns = menu.get('max_columns', 2)
+            menu_items = menu.get('items', [])
+        
+        text = f"<b>{menu_title}</b>\n\n{menu_description}"
+        if menu_header_text:
+            text = f"{menu_header_text}\n\n{text}"
+        if menu_footer_text:
+            text = f"{text}\n\n<i>{menu_footer_text}</i>"
 
         buttons = []
         row = []
-        for item in menu.items:
-            row.append(InlineKeyboardButton(text=item.text, callback_data=item.action_data))
-            if len(row) >= menu.max_columns:
+        for item in menu_items:
+            # Get item properties based on type (MenuItem object or dictionary)
+            if isinstance(item, dict):
+                item_text = item.get('text', 'Item')
+                item_action_data = item.get('action_data', '')
+            else:
+                item_text = getattr(item, 'text', 'Item')
+                item_action_data = getattr(item, 'action_data', '')
+            
+            row.append(InlineKeyboardButton(text=item_text, callback_data=item_action_data))
+            if len(row) >= menu_max_columns:
                 buttons.append(row)
                 row = []
         if row:

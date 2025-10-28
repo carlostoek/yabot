@@ -1,6 +1,7 @@
 import asyncio
 from typing import Dict, Any, Optional
 from datetime import datetime
+import sys
 
 from aiogram import Bot
 from aiogram.types import Message, CallbackQuery
@@ -8,6 +9,7 @@ from aiogram.types import Message, CallbackQuery
 from src.handlers.base import BaseHandler
 from src.handlers.menu_handler import MenuHandlerSystem
 from src.handlers.callback_processor import CallbackProcessor
+from src.handlers.action_dispatcher import ActionDispatcher
 from src.ui.menu_factory import MenuFactory
 from src.ui.message_manager import MessageManager
 from src.ui.telegram_menu_renderer import TelegramMenuRenderer
@@ -44,7 +46,7 @@ class MenuSystemCoordinator:
         self.user_service = user_service
 
         # Initialize core components
-        self.menu_factory = MenuFactory()
+        self.menu_factory = MenuFactory(user_service)
 
         # Initialize message manager with error handling
         if hasattr(user_service, 'cache_manager') and user_service.cache_manager:
@@ -69,7 +71,7 @@ class MenuSystemCoordinator:
             user_service, event_bus, self.menu_factory, self.message_manager
         )
         self.callback_processor = CallbackProcessor(
-            self.menu_factory, self.message_manager, self.performance_monitor
+            self.menu_factory, self.message_manager, self.performance_monitor, event_bus
         )
         self.action_dispatcher = ActionDispatcher(event_bus)
 
@@ -114,6 +116,7 @@ class MenuSystemCoordinator:
         try:
             user_context = await self.user_service.get_enhanced_user_menu_context(str(message.from_user.id))
 
+            print(f"[DEBUGGER:handle_menu_command:2.1] About to determine menu type", file=sys.stderr)
             # Determine menu type based on command or default to main
             command = message.text.strip() if message.text else "/menu"
             menu_id = menu_system_config.get_routing_rule(command.lstrip('/'))
@@ -123,19 +126,58 @@ class MenuSystemCoordinator:
             if not menu:
                 return {"success": False, "error": "Failed to generate menu"}
 
-            # Render and send menu
-            response = await self.menu_renderer.render_menu_response(menu)
+            # Render menu
+            response = self.menu_renderer.render_menu_response(menu)
 
-            # Track message for cleanup
-            sent_message = await self.bot.send_message(
-                message.chat.id,
-                response["text"],
-                reply_markup=response.get("reply_markup")
-            )
+            # Check if there's an existing main menu message to edit
+            main_menu_key = f"main_menu:{message.chat.id}"
+            existing_main_menu_id = None
 
+            if hasattr(self.message_manager, 'cache') and self.message_manager.cache:
+                try:
+                    existing_main_menu_id_str = await self.message_manager.cache.get_value(main_menu_key)
+                    if existing_main_menu_id_str:
+                        existing_main_menu_id = int(existing_main_menu_id_str.strip('"').strip())
+                except Exception:
+                    existing_main_menu_id = None
+
+            sent_message = None
+
+            # Try to edit existing main menu first
+            if existing_main_menu_id:
+                try:
+                    await self.bot.edit_message_text(
+                        text=response["text"],
+                        chat_id=str(message.chat.id),
+                        message_id=existing_main_menu_id,
+                        reply_markup=response.get("reply_markup"),
+                        parse_mode="HTML"
+                    )
+                    # Use existing message ID for tracking
+                    sent_message_id = existing_main_menu_id
+                    logger.debug(f"Successfully edited existing main menu {existing_main_menu_id}")
+
+                except Exception as edit_error:
+                    logger.warning(f"Failed to edit existing main menu, sending new: {edit_error}")
+                    existing_main_menu_id = None
+
+            # If editing failed or no existing menu, send new message
+            if not existing_main_menu_id:
+                # Clean up old messages first
+                await self.message_manager.delete_old_messages(message.chat.id, keep_main_menu=False)
+
+                sent_message = await self.bot.send_message(
+                    chat_id=str(message.chat.id),
+                    text=response["text"],
+                    reply_markup=response.get("reply_markup"),
+                    parse_mode="HTML"
+                )
+                sent_message_id = sent_message.message_id
+
+            # Track the menu message
             await self.message_manager.track_message(
                 message.chat.id,
-                sent_message.message_id,
+                sent_message_id,
                 "main_menu",
                 is_main_menu=True
             )
@@ -207,42 +249,107 @@ class MenuSystemCoordinator:
 
     async def _handle_menu_update(self, callback_query: CallbackQuery,
                                 action_result: Any, user_context: Dict[str, Any]) -> None:
-        """Handle menu update after callback processing."""
+        """Handle menu update with optimized message editing and cleanup."""
         try:
-            # Clean up old messages if enabled
+            # Always try to edit the existing menu message first
+            if callback_query.message and action_result.new_menu:
+                # Render new menu
+                response = self.menu_renderer.render_menu_response(action_result.new_menu)
+
+                try:
+                    # Attempt to edit existing message
+                    await self.bot.edit_message_text(
+                        text=response["text"],
+                        chat_id=str(callback_query.message.chat.id),
+                        message_id=callback_query.message.message_id,
+                        reply_markup=response.get("reply_markup"),
+                        parse_mode="HTML"
+                    )
+
+                    # Update tracking for the edited message
+                    await self.message_manager.track_message(
+                        callback_query.message.chat.id,
+                        callback_query.message.message_id,
+                        "main_menu",
+                        is_main_menu=True
+                    )
+
+                except Exception as edit_error:
+                    logger.warning(f"Failed to edit message, sending new one: {edit_error}")
+
+                    # If editing fails, clean up and send new message
+                    await self.message_manager.delete_old_messages(
+                        callback_query.message.chat.id,
+                        keep_main_menu=False
+                    )
+
+                    sent_message = await self.bot.send_message(
+                        chat_id=str(callback_query.message.chat.id),
+                        text=response["text"],
+                        reply_markup=response.get("reply_markup"),
+                        parse_mode="HTML"
+                    )
+
+                    await self.message_manager.track_message(
+                        callback_query.message.chat.id,
+                        sent_message.message_id,
+                        "main_menu",
+                        is_main_menu=True
+                    )
+
+            # Clean up system messages with intelligent delay
             if action_result.cleanup_messages:
-                await self.message_manager.delete_old_messages(callback_query.message.chat.id)
-
-            # Render new menu
-            response = await self.menu_renderer.render_menu_response(
-                action_result.new_menu, edit_message=action_result.should_edit_menu
-            )
-
-            if action_result.should_edit_menu and callback_query.message:
-                # Edit existing message
-                await self.bot.edit_message_text(
-                    response["text"],
-                    callback_query.message.chat.id,
-                    callback_query.message.message_id,
-                    reply_markup=response.get("reply_markup")
-                )
-            else:
-                # Send new message
-                sent_message = await self.bot.send_message(
-                    callback_query.message.chat.id,
-                    response["text"],
-                    reply_markup=response.get("reply_markup")
-                )
-
-                await self.message_manager.track_message(
-                    callback_query.message.chat.id,
-                    sent_message.message_id,
-                    "main_menu",
-                    is_main_menu=True
-                )
+                await self._schedule_system_message_cleanup(callback_query.message.chat.id)
 
         except Exception as e:
             logger.error(f"Error handling menu update: {e}")
+
+    async def _schedule_system_message_cleanup(self, chat_id: int) -> None:
+        """Schedule cleanup of system messages with intelligent delays."""
+        try:
+            import asyncio
+
+            # Schedule immediate cleanup of very fast messages (loading, callbacks)
+            asyncio.create_task(self._delayed_cleanup(chat_id, ["loading_message", "callback_response"], 0.5))
+
+            # Schedule quick cleanup of feedback messages
+            asyncio.create_task(self._delayed_cleanup(chat_id, ["success_feedback", "system_notification"], 2.0))
+
+            # Schedule cleanup of error messages (users need time to read)
+            asyncio.create_task(self._delayed_cleanup(chat_id, ["error_message", "temporary_info"], 5.0))
+
+        except Exception as e:
+            logger.error(f"Error scheduling system message cleanup: {e}")
+
+    async def _delayed_cleanup(self, chat_id: int, message_types: list, delay: float) -> None:
+        """Execute delayed cleanup of specific message types."""
+        try:
+            import asyncio
+            await asyncio.sleep(delay)
+
+            # Get all tracked messages for this chat
+            pattern = f"msg_track:{chat_id}:*"
+            if hasattr(self.message_manager, 'cache') and self.message_manager.cache:
+                keys = await self.message_manager.cache.get_keys_by_pattern(pattern)
+
+                for key in keys:
+                    try:
+                        record_data_str = await self.message_manager.cache.get_value(key)
+                        if record_data_str:
+                            import json
+                            record_data = json.loads(record_data_str)
+
+                            # Only delete messages of specified types
+                            if record_data.get('message_type') in message_types:
+                                await self.message_manager.delete_message(
+                                    record_data['chat_id'],
+                                    record_data['message_id']
+                                )
+                    except Exception as record_error:
+                        logger.warning(f"Error processing cleanup record {key}: {record_error}")
+
+        except Exception as e:
+            logger.error(f"Error in delayed cleanup: {e}")
 
     async def _handle_action_dispatch(self, callback_query: CallbackQuery,
                                     action_result: Any, user_context: Dict[str, Any]) -> None:
@@ -288,8 +395,8 @@ class MenuSystemCoordinator:
             
             # Send the explanation as a new message
             await self.bot.send_message(
-                callback_query.message.chat.id,
-                explanation_text,
+                chat_id=str(callback_query.message.chat.id),
+                text=explanation_text,
                 parse_mode="HTML"
             )
             

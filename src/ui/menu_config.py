@@ -10,10 +10,12 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 # Menu system constants
-MENU_SYSTEM_VERSION = "1.0.0"
+MENU_SYSTEM_VERSION = "1.1.0"  # Enhanced navigation
 DEFAULT_MENU_TTL = 300  # 5 minutes
 MAX_MENU_DEPTH = 5
 DEFAULT_MAX_COLUMNS = 2
+BREADCRUMB_MAX_LENGTH = 40
+NAVIGATION_MEMORY_TTL = 1800  # 30 minutes for navigation context
 
 # Menu types enumeration
 class MenuType(str, Enum):
@@ -68,6 +70,11 @@ class MenuItemConfig:
     enabled_condition: str = ""
     metadata: Dict[str, Any] = field(default_factory=dict)
     required_worthiness: float = 0.0
+    # Enhanced navigation properties
+    is_navigation_item: bool = False
+    navigation_priority: int = 0  # Higher priority items appear first
+    show_progress_indicator: bool = False
+    contextual_help: str = ""
 
 # Menu definition
 @dataclass
@@ -206,18 +213,22 @@ MENU_SYSTEM_SETTINGS: Dict[str, Any] = {
     "enable_organic_restrictions": True,
     "enable_performance_monitoring": True,
     "cleanup_expired_messages": True,
+    "enhanced_navigation": True,  # Enable smart navigation features
+    "auto_cleanup_strategy": "adaptive",  # adaptive, immediate, scheduled
+    "breadcrumb_style": "compact",  # compact, full, minimal
     "message_ttl_config": {
         'main_menu': -1,  # Never delete
-        'system_notification': 5,
-        'error_message': 10,
-        'success_feedback': 3,
-        'loading_message': 2,
-        'temporary_info': 8,
-        'lucien_response': 6,
-        'callback_response': 4,
-        'admin_notification': 15,
-        'debug_message': 30,
-        'default': 60
+        'system_notification': 3,  # Reduced for faster cleanup
+        'error_message': 8,  # Slightly longer for user to read
+        'success_feedback': 2,  # Quick feedback
+        'loading_message': 1,  # Very fast cleanup
+        'temporary_info': 5,  # Faster cleanup
+        'lucien_response': 12,  # Longer for reading
+        'callback_response': 2,  # Quick acknowledgment
+        'admin_notification': 20,  # Admin needs more time
+        'debug_message': 30,  # Keep debug longer
+        'navigation_breadcrumb': 300,  # 5 minutes for context
+        'default': 45  # Reduced default
     }
 }
 

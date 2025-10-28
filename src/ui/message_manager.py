@@ -400,28 +400,30 @@ class MessageManager:
         chat_id: int,
         message_id: int,
         message_type: str,
-        is_main_menu: bool = False
+        is_main_menu: bool = False,
+        auto_schedule_cleanup: bool = True
     ) -> None:
         """
-        Track a message for potential automatic cleanup.
+        Track a message for potential automatic cleanup with intelligent scheduling.
 
         Args:
             chat_id: The chat ID.
             message_id: The message ID.
             message_type: The type of the message (e.g., 'notification', 'main_menu').
             is_main_menu: Flag indicating if this is the main menu message.
+            auto_schedule_cleanup: Whether to automatically schedule cleanup for this message.
         """
         if not self._initialized:
             logger.warning("MessageManager not initialized. Skipping message tracking.")
             return
-            
+
         if not await self.cache.connect():
             logger.warning("Cache not connected. Skipping message tracking.")
             self._metrics["cache_errors"] += 1
             return
 
         ttl = MESSAGE_TTL_CONFIG.get(message_type, MESSAGE_TTL_CONFIG['default'])
-        
+
         record = MessageTrackingRecord(
             chat_id=chat_id,
             message_id=message_id,
@@ -433,14 +435,109 @@ class MessageManager:
 
         key = self._get_tracking_key(chat_id, message_id)
         # Use a slightly longer Redis TTL to allow for processing time
-        redis_ttl = None if ttl == -1 else ttl + 10 
-        
+        redis_ttl = None if ttl == -1 else ttl + 10
+
         await self.cache.set_value(key, record.__dict__, ttl=redis_ttl)
         self._metrics["total_messages_tracked"] += 1
         logger.debug(f"Tracking message {message_id} in chat {chat_id} with TTL {ttl}s.")
 
         if is_main_menu:
             await self.preserve_main_menu(chat_id, message_id)
+        elif auto_schedule_cleanup and ttl > 0:
+            # Schedule intelligent cleanup for system messages
+            await self._schedule_smart_cleanup(chat_id, message_id, message_type, ttl)
+
+    async def _schedule_smart_cleanup(self, chat_id: int, message_id: int, message_type: str, ttl: int) -> None:
+        """Schedule smart cleanup for system messages with appropriate delays."""
+        try:
+            import asyncio
+
+            # Define smart cleanup delays based on message type
+            cleanup_delays = {
+                'loading_message': 0.5,      # Very fast cleanup
+                'callback_response': 1.0,    # Quick acknowledgment
+                'success_feedback': 2.0,     # Brief success message
+                'system_notification': 3.0,  # Short system info
+                'temporary_info': 5.0,       # Temporary information
+                'error_message': 8.0,        # Users need time to read errors
+                'lucien_response': 12.0,     # Longer for reading responses
+                'admin_notification': 20.0,  # Admin messages stay longer
+                'debug_message': ttl,        # Use full TTL for debug
+                'default': min(ttl, 45)      # Cap at 45 seconds for other types
+            }
+
+            delay = cleanup_delays.get(message_type, cleanup_delays['default'])
+
+            # Schedule the cleanup
+            asyncio.create_task(self._execute_delayed_cleanup(chat_id, message_id, delay))
+
+            logger.debug(f"Scheduled cleanup for {message_type} message {message_id} in {delay}s")
+
+        except Exception as e:
+            logger.error(f"Error scheduling smart cleanup: {e}")
+
+    async def _execute_delayed_cleanup(self, chat_id: int, message_id: int, delay: float) -> None:
+        """Execute cleanup after the specified delay."""
+        try:
+            import asyncio
+            await asyncio.sleep(delay)
+
+            # Check if message still exists and should be cleaned up
+            key = self._get_tracking_key(chat_id, message_id)
+            record_data_str = await self.cache.get_value(key)
+
+            if record_data_str:
+                try:
+                    import json
+                    record_data = json.loads(record_data_str)
+
+                    # Only delete if it's still marked for deletion and not main menu
+                    if record_data.get('should_delete', False) and not record_data.get('is_main_menu', False):
+                        await self.delete_message(chat_id, message_id)
+                        logger.debug(f"Smart cleanup executed for message {message_id}")
+
+                except json.JSONDecodeError:
+                    logger.warning(f"Invalid record data for message {message_id}, cleaning up key")
+                    await self.cache.delete_key(key)
+
+        except Exception as e:
+            logger.error(f"Error executing delayed cleanup for message {message_id}: {e}")
+
+    async def send_auto_cleanup_notification(self, chat_id: int, text: str, message_type: str = 'system_notification') -> Optional[int]:
+        """
+        Send a notification message that will auto-cleanup with intelligent timing.
+
+        Args:
+            chat_id: The chat ID to send the message to.
+            text: The notification text.
+            message_type: Type of message for appropriate cleanup timing.
+
+        Returns:
+            Message ID if successful, None otherwise.
+        """
+        try:
+            # Send the notification message using the bot instance
+            sent_message = await self.bot.send_message(
+                chat_id=str(chat_id),
+                text=text,
+                parse_mode="HTML"
+            )
+
+            # Track with auto-cleanup enabled
+            await self.track_message(
+                chat_id=chat_id,
+                message_id=sent_message.message_id,
+                message_type=message_type,
+                is_main_menu=False,
+                auto_schedule_cleanup=True
+            )
+
+            logger.debug(f"Sent auto-cleanup notification {sent_message.message_id} to chat {chat_id}")
+            return sent_message.message_id
+
+        except Exception as e:
+            logger.error(f"Error sending auto-cleanup notification: {e}")
+            return None
 
     async def preserve_main_menu(self, chat_id: int, message_id: int) -> None:
         """
@@ -454,11 +551,14 @@ class MessageManager:
         old_main_menu_id_str = await self.cache.get_value(main_menu_key)
 
         # Schedule deletion of the old main menu message if it exists
-        if old_main_menu_id_str and int(old_main_menu_id_str) != message_id:
+        if old_main_menu_id_str:
             try:
-                old_main_menu_id = int(old_main_menu_id_str)
-                logger.debug(f"Scheduling old main menu {old_main_menu_id} for deletion.")
-                await self.delete_message(chat_id, old_main_menu_id)
+                # Clean string - remove quotes if present
+                cleaned_id_str = old_main_menu_id_str.strip('"').strip()
+                old_main_menu_id = int(cleaned_id_str)
+                if old_main_menu_id != message_id:
+                    logger.debug(f"Scheduling old main menu {old_main_menu_id} for deletion.")
+                    await self.delete_message(chat_id, old_main_menu_id)
             except (ValueError, TypeError) as e:
                 logger.error(f"Invalid old main menu ID found in cache: {old_main_menu_id_str}. Error: {e}")
 
@@ -534,7 +634,13 @@ class MessageManager:
         if keep_main_menu:
             main_menu_id_str = await self.cache.get_value(self._get_main_menu_key(chat_id))
             if main_menu_id_str:
-                main_menu_id = int(main_menu_id_str)
+                try:
+                    # Clean string - remove quotes if present
+                    cleaned_id_str = main_menu_id_str.strip('"').strip()
+                    main_menu_id = int(cleaned_id_str)
+                except (ValueError, TypeError) as e:
+                    logger.error(f"Invalid main menu ID found in cache: {main_menu_id_str}. Error: {e}")
+                    main_menu_id = -1
 
         deletion_tasks = []
         for key in keys:

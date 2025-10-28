@@ -161,17 +161,17 @@ async def shutdown_bot(signum=None, frame=None):
         logger.info("Backup automation stopped")
 
     # CRITICAL: Close database connections to allow event loop termination
-    if db_manager:
+    if bot_app and bot_app.database_manager:
         try:
-            await db_manager.close_all()
+            await bot_app.database_manager.close_all()
             logger.info("Database connections closed")
         except Exception as e:
             logger.error(f"Error closing database connections: {e}")
 
     # Close event bus Redis connections
-    if event_bus:
+    if bot_app and bot_app.event_bus:
         try:
-            await event_bus.close()
+            await bot_app.event_bus.close()
             logger.info("Event bus connections closed")
         except Exception as e:
             logger.error(f"Error closing event bus: {e}")

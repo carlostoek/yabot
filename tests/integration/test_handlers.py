@@ -10,7 +10,7 @@ import asyncio
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from typing import Any, Dict, Optional
 
-from src.handlers.commands import CommandHandler
+from src.handlers.telegram_commands import CommandHandler
 from src.handlers.webhook import WebhookHandler
 from src.services.user import UserService
 from src.events.bus import EventBus
