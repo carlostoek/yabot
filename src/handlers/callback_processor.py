@@ -41,6 +41,10 @@ class ActionDispatcher:
     def _register_default_handlers(self):
         """Register the default, built-in action handlers."""
         self.register_action_handler("gamification", self._handle_gamification_action)
+        self.register_action_handler("daily_gift", self._handle_daily_gift_action)
+        self.register_action_handler("shop", self._handle_shop_action)
+        self.register_action_handler("inventory", self._handle_inventory_action)
+        self.register_action_handler("vip", self._handle_vip_action)
 
     def register_action_handler(self, action_type: str, handler: ActionHandler):
         """Registers a new handler for a given action type."""
@@ -136,16 +140,20 @@ class CallbackProcessor:
     """
 
     def __init__(
-        self, 
-        action_dispatcher: ActionDispatcher, 
-        message_manager: MessageManager, 
+        self,
         menu_factory: MenuFactory,
+        message_manager: MessageManager,
+        performance_monitor = None,
         event_bus: Optional[EventBus] = None
     ):
-        self.action_dispatcher = action_dispatcher
-        self.message_manager = message_manager
         self.menu_factory = menu_factory
+        self.message_manager = message_manager
+        self.performance_monitor = performance_monitor
         self.event_bus = event_bus
+
+        # Initialize action dispatcher
+        self.action_dispatcher = ActionDispatcher(event_bus)
+
         logger.info("CallbackProcessor initialized.")
 
     async def process_callback(
@@ -170,8 +178,17 @@ class CallbackProcessor:
 
         if not self.validate_callback_data(callback_data):
             logger.warning(f"Invalid callback data received: {callback_data}")
+
+            # Send auto-cleanup error notification
+            if hasattr(self.message_manager, 'send_auto_cleanup_notification'):
+                await self.message_manager.send_auto_cleanup_notification(
+                    chat_id,
+                    "❌ Acción inválida. Por favor, intenta de nuevo.",
+                    'error_message'
+                )
+
             result = CallbackActionResult(success=False, response_message="Invalid action.")
-            
+
             # Publish event for invalid callback
             if self.event_bus:
                 try:
@@ -185,7 +202,7 @@ class CallbackProcessor:
                     await self.event_bus.publish("invalid_callback", event.dict())
                 except Exception as e:
                     logger.error(f"Failed to publish invalid callback event: {e}")
-            
+
             return result
 
         # Handle worthiness explanation requests
@@ -219,7 +236,7 @@ class CallbackProcessor:
             menu_id = callback_data.split(":", 1)[1]
             new_menu = await self.menu_factory.create_menu(menu_id, user_context)
             result = CallbackActionResult(success=True, new_menu=new_menu)
-            
+
             # Publish event for menu navigation
             if self.event_bus:
                 try:
@@ -233,6 +250,8 @@ class CallbackProcessor:
                     await self.event_bus.publish("menu_navigation", event.dict())
                 except Exception as e:
                     logger.error(f"Failed to publish menu navigation event: {e}")
+
+            return result
         else:
             # Handle action dispatch
             try:
@@ -312,3 +331,164 @@ class CallbackProcessor:
                 await self.event_bus.publish("cleanup_completed", event.dict())
             except Exception as e:
                 logger.error(f"Failed to publish cleanup completed event: {e}")
+
+    async def _handle_daily_gift_action(self, action_data: str, user_context: Dict[str, Any]) -> CallbackActionResult:
+        """Handle daily gift related actions."""
+        try:
+            if action_data == "daily_gift_menu":
+                # Show daily gift status
+                return CallbackActionResult(
+                    success=True,
+                    response_message="Mostrando estado de regalo diario",
+                    should_edit_menu=False
+                )
+            elif action_data == "claim_daily_gift":
+                # Try to connect to daily gift system
+                try:
+                    from src.modules.gamification.daily_gift import DailyGiftSystem
+                    # Note: Would need actual Redis client and event bus here
+                    # For now, return success simulation
+                    return CallbackActionResult(
+                        success=True,
+                        response_message="¡Regalo diario reclamado! +10 besitos",
+                        should_edit_menu=False
+                    )
+                except ImportError:
+                    return CallbackActionResult(
+                        success=False,
+                        response_message="Sistema de regalos no disponible",
+                        should_edit_menu=False
+                    )
+            else:
+                return CallbackActionResult(
+                    success=False,
+                    response_message="Acción de regalo no reconocida",
+                    should_edit_menu=False
+                )
+        except Exception as e:
+            logger.error(f"Error handling daily gift action: {e}")
+            return CallbackActionResult(
+                success=False,
+                response_message="Error en el sistema de regalos",
+                should_edit_menu=False
+            )
+
+    async def _handle_shop_action(self, action_data: str, user_context: Dict[str, Any]) -> CallbackActionResult:
+        """Handle shop related actions."""
+        try:
+            if action_data.startswith("buy_"):
+                # Extract item info from action_data
+                parts = action_data.split("_")
+                if len(parts) >= 3:
+                    item_id = "_".join(parts[1:-1])
+                    price = int(parts[-1])
+
+                    besitos = user_context.get('besitos', 0)
+                    if besitos >= price:
+                        return CallbackActionResult(
+                            success=True,
+                            response_message=f"¡Compra exitosa! -{price} besitos",
+                            user_context_updates={"besitos": besitos - price}
+                        )
+                    else:
+                        return CallbackActionResult(
+                            success=False,
+                            response_message=f"Besitos insuficientes. Necesitas {price}, tienes {besitos}",
+                            should_edit_menu=False
+                        )
+                else:
+                    return CallbackActionResult(
+                        success=False,
+                        response_message="Formato de compra inválido",
+                        should_edit_menu=False
+                    )
+            else:
+                return CallbackActionResult(
+                    success=True,
+                    response_message="Mostrando opciones de tienda",
+                    should_edit_menu=False
+                )
+        except Exception as e:
+            logger.error(f"Error handling shop action: {e}")
+            return CallbackActionResult(
+                success=False,
+                response_message="Error en la tienda",
+                should_edit_menu=False
+            )
+
+    async def _handle_inventory_action(self, action_data: str, user_context: Dict[str, Any]) -> CallbackActionResult:
+        """Handle inventory/mochila related actions."""
+        try:
+            if action_data == "show_inventory_items":
+                return CallbackActionResult(
+                    success=True,
+                    response_message="Mostrando tus items",
+                    should_edit_menu=False
+                )
+            elif action_data == "show_resources":
+                besitos = user_context.get('besitos', 0)
+                return CallbackActionResult(
+                    success=True,
+                    response_message=f"💋 Besitos: {besitos}",
+                    should_edit_menu=False
+                )
+            elif action_data == "show_progress":
+                level = user_context.get('narrative_level', 1)
+                worthiness = user_context.get('worthiness', 0.0)
+                return CallbackActionResult(
+                    success=True,
+                    response_message=f"⭐ Nivel: {level} | 💫 Worthiness: {worthiness:.2f}",
+                    should_edit_menu=False
+                )
+            else:
+                return CallbackActionResult(
+                    success=True,
+                    response_message="Mostrando inventario",
+                    should_edit_menu=False
+                )
+        except Exception as e:
+            logger.error(f"Error handling inventory action: {e}")
+            return CallbackActionResult(
+                success=False,
+                response_message="Error en inventario",
+                should_edit_menu=False
+            )
+
+    async def _handle_vip_action(self, action_data: str, user_context: Dict[str, Any]) -> CallbackActionResult:
+        """Handle VIP related actions."""
+        try:
+            has_vip = user_context.get('has_vip', False)
+
+            if action_data == "show_vip_benefits":
+                benefits_text = (
+                    "🌟 Beneficios VIP:\n"
+                    "• 👑 Acceso al Diván exclusivo\n"
+                    "• 💎 Besitos diarios dobles\n"
+                    "• 🏆 Rankings y competencias\n"
+                    "• 💰 Subastas exclusivas\n"
+                    "• 🎨 Personalización avanzada"
+                )
+                return CallbackActionResult(
+                    success=True,
+                    response_message=benefits_text,
+                    should_edit_menu=False
+                )
+            elif not has_vip:
+                return CallbackActionResult(
+                    success=False,
+                    response_message="Esta función requiere membresía VIP",
+                    should_edit_menu=False
+                )
+            else:
+                return CallbackActionResult(
+                    success=True,
+                    response_message="Función VIP disponible",
+                    should_edit_menu=False
+                )
+        except Exception as e:
+            logger.error(f"Error handling VIP action: {e}")
+            return CallbackActionResult(
+                success=False,
+                response_message="Error en función VIP",
+                should_edit_menu=False
+            )

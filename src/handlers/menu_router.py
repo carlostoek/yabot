@@ -1,6 +1,7 @@
 """
 Menu Integration Router component for the Telegram bot framework.
 """
+import sys
 from typing import Any, Optional, Callable, Dict
 
 from aiogram.types import Message, CallbackQuery
@@ -64,6 +65,7 @@ class MenuIntegrationRouter(Router):
     async def route_message(self, message: Message) -> Any:
         """
         Routes an incoming Telegram Message object through the middleware pipeline.
+        Uses MenuSystemCoordinator for enhanced menu operations when available.
 
         Args:
             message (Message): The incoming Aiogram Message object.
@@ -73,28 +75,53 @@ class MenuIntegrationRouter(Router):
         """
         logger.debug("Routing message in MenuIntegrationRouter...")
         logger.debug("Message type: %s", type(message).__name__)
-        logger.debug("Message content: %s", message)
+        logger.debug("Menu coordinator available: %s", self.menu_coordinator is not None)
 
-        response = await self.route_update(message)
+        # Use MenuSystemCoordinator for ALL commands if available
+        if message.text and message.text.startswith('/') and self.menu_coordinator:
+            command = message.text.strip().lower()
+            logger.debug(f"Processing command: {command}")
 
-        # If we got a CommandResponse, send it back to Telegram
-        if response and hasattr(response, 'text'):
-            logger.debug("Sending response back to Telegram: %s", response.text[:50] + "..." if len(response.text) > 50 else response.text)
-            await message.answer(
-                text=response.text,
-                parse_mode=getattr(response, 'parse_mode', 'HTML'),
-                reply_markup=getattr(response, 'reply_markup', None),
-                disable_notification=getattr(response, 'disable_notification', False)
-            )
+            # Handle ALL commands through the MenuSystemCoordinator
+            logger.info(f"Routing {command} command through MenuSystemCoordinator")
+            try:
+                result = await self.menu_coordinator.handle_menu_command(message)
+                logger.debug(f"MenuSystemCoordinator result: {result}")
+                if result.get("success"):
+                    logger.info(f"MenuSystemCoordinator successfully handled {command}")
+                    return result
+                else:
+                    logger.warning(f"MenuSystemCoordinator failed for {command}: {result.get('error')}")
+                    # Fall through to standard routing only if coordinator fails
+            except Exception as e:
+                logger.error(f"Error in MenuSystemCoordinator for {command}: {e}", exc_info=True)
+                # Fall through to standard routing only if coordinator fails
 
-        return response
+        # Standard routing only as fallback when coordinator is not available
+        if not self.menu_coordinator:
+            logger.warning("Menu coordinator not available, using standard routing")
+            response = await self.route_update(message)
+
+            # If we got a CommandResponse, send it back to Telegram
+            if response and hasattr(response, 'text'):
+                logger.debug("Sending response back to Telegram: %s", response.text[:50] + "..." if len(response.text) > 50 else response.text)
+                await message.answer(
+                    text=response.text,
+                    parse_mode=getattr(response, 'parse_mode', 'HTML'),
+                    reply_markup=getattr(response, 'reply_markup', None),
+                    disable_notification=getattr(response, 'disable_notification', False)
+                )
+
+            return response
+
+        # If we reach here, coordinator is available but something went wrong
+        logger.error("MenuSystemCoordinator available but failed to handle command")
+        return {"success": False, "error": "Command processing failed"}
 
     async def route_callback(self, callback_query: CallbackQuery) -> Any:
         """
         Routes an incoming Telegram CallbackQuery object through the middleware pipeline.
-
-        It first checks dedicated callback handlers. If no specific handler
-        is found, it falls back to the generic update routing.
+        Uses MenuSystemCoordinator for menu-related callbacks when available.
 
         Args:
             callback_query (CallbackQuery): The incoming Aiogram CallbackQuery object.
@@ -103,6 +130,25 @@ class MenuIntegrationRouter(Router):
             Any: The response from the executed handler, processed by middleware.
         """
         logger.debug("Routing callback query...")
+
+        # Check if this is a menu-related callback and we have a coordinator
+        if callback_query.data and self.menu_coordinator:
+            # Handle menu callbacks through the MenuSystemCoordinator
+            if (callback_query.data.startswith('menu:') or
+                callback_query.data.startswith('explain_divan_worthiness') or
+                callback_query.data.startswith('worthiness_explanation')):
+                logger.info(f"Routing callback '{callback_query.data}' through MenuSystemCoordinator")
+                try:
+                    result = await self.menu_coordinator.handle_callback_query(callback_query)
+                    if result.get("success"):
+                        logger.info(f"MenuSystemCoordinator successfully handled callback")
+                        return result
+                    else:
+                        logger.warning(f"MenuSystemCoordinator failed for callback: {result.get('error')}")
+                        # Fall through to standard routing
+                except Exception as e:
+                    logger.error(f"Error in MenuSystemCoordinator for callback: {e}")
+                    # Fall through to standard routing
 
         # Process request through middleware
         processed_update = await self.middleware_manager.process_request(callback_query)

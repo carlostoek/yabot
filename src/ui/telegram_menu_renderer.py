@@ -3,6 +3,7 @@ Telegram menu renderer for the YABOT system.
 Converts Menu objects to Telegram inline keyboards and handles menu rendering.
 """
 
+import sys
 import logging
 from typing import List, Optional, Dict, Any
 
@@ -39,21 +40,30 @@ class TelegramMenuRenderer:
         Returns:
             InlineKeyboardMarkup: The rendered keyboard
         """
+        # Handle both Menu objects and dictionaries
+        if hasattr(menu, 'items'):
+            menu_items = menu.items
+            menu_max_columns = getattr(menu, 'max_columns', 2)
+        else:
+            # Assume it's a dictionary
+            menu_items = menu.get('items', [])
+            menu_max_columns = menu.get('max_columns', 2)
+        
         keyboard = InlineKeyboardMarkup(inline_keyboard=[])
         
         # Add menu items in rows
         row = []
-        for i, item in enumerate(menu.items):
+        for i, item in enumerate(menu_items):
             button = self._create_button_for_item(item)
             if button:
                 row.append(button)
                 
                 # Start a new row when we reach the max columns or end of items
-                if len(row) >= menu.max_columns or i == len(menu.items) - 1:
+                if len(row) >= menu_max_columns or i == len(menu_items) - 1:
                     keyboard.inline_keyboard.append(row)
                     row = []
         
-        logger.debug(f"Rendered menu '{menu.menu_id}' with {len(keyboard.inline_keyboard)} rows")
+        logger.debug(f"Rendered menu with {len(keyboard.inline_keyboard)} rows")
         return keyboard
 
     def _create_button_for_item(self, item: MenuItem) -> Optional[InlineKeyboardButton]:
@@ -67,43 +77,59 @@ class TelegramMenuRenderer:
             InlineKeyboardButton: The created button, or None if item should not be rendered
         """
         # Generate Lucien's voice text for the item if not already present
-        if not hasattr(item, 'lucien_voice_text') or not item.lucien_voice_text:
-            item.lucien_voice_text = self._generate_lucien_item_text(item)
+        if isinstance(item, dict):
+            # Handle dictionary items
+            if 'lucien_voice_text' not in item or not item['lucien_voice_text']:
+                item['lucien_voice_text'] = self._generate_lucien_item_text(item)
+        else:
+            # Handle MenuItem objects
+            if not hasattr(item, 'lucien_voice_text') or not item.lucien_voice_text:
+                item.lucien_voice_text = self._generate_lucien_item_text(item)
+        
+        # Get item properties based on type
+        if isinstance(item, dict):
+            item_text = item.get('text', '')
+            item_action_type = item.get('action_type', '')
+            item_action_data = item.get('action_data', '')
+        else:
+            item_text = getattr(item, 'text', '')
+            item_action_type = getattr(item, 'action_type', '')
+            item_action_data = getattr(item, 'action_data', '')
         
         # Create button based on action type
-        if item.action_type == ActionType.CALLBACK:
+        if str(item_action_type) == str(ActionType.CALLBACK):
             return InlineKeyboardButton(
-                text=item.text,
-                callback_data=item.action_data
+                text=item_text,
+                callback_data=item_action_data
             )
-        elif item.action_type == ActionType.URL:
+        elif str(item_action_type) == str(ActionType.URL):
             return InlineKeyboardButton(
-                text=item.text,
-                url=item.action_data
+                text=item_text,
+                url=item_action_data
             )
-        elif item.action_type == ActionType.SUBMENU:
+        elif str(item_action_type) == str(ActionType.SUBMENU):
             return InlineKeyboardButton(
-                text=item.text,
-                callback_data=f"menu:{item.action_data}"
+                text=item_text,
+                callback_data=f"menu:{item_action_data}"
             )
-        elif item.action_type == ActionType.COMMAND:
+        elif str(item_action_type) == str(ActionType.COMMAND):
             return InlineKeyboardButton(
-                text=item.text,
-                callback_data=f"command:{item.action_data}"
+                text=item_text,
+                callback_data=f"command:{item_action_data}"
             )
-        elif item.action_type == ActionType.NARRATIVE_ACTION:
+        elif str(item_action_type) == str(ActionType.NARRATIVE_ACTION):
             return InlineKeyboardButton(
-                text=item.text,
-                callback_data=f"narrative:{item.action_data}"
+                text=item_text,
+                callback_data=f"narrative:{item_action_data}"
             )
-        elif item.action_type == ActionType.ADMIN_ACTION:
+        elif str(item_action_type) == str(ActionType.ADMIN_ACTION):
             return InlineKeyboardButton(
-                text=item.text,
-                callback_data=f"admin:{item.action_data}"
+                text=item_text,
+                callback_data=f"admin:{item_action_data}"
             )
         
         # If we don't know how to handle this action type, log and skip
-        logger.warning(f"Unknown action type '{item.action_type}' for menu item '{item.id}'")
+        logger.warning(f"Unknown action type '{item_action_type}' for menu item")
         return None
 
     def _generate_lucien_item_text(self, item: MenuItem) -> str:
@@ -121,24 +147,51 @@ class TelegramMenuRenderer:
             lucien_profile = LucienVoiceProfile()
             
             # Generate context for Lucien based on item properties
+            # Handle both MenuItem objects and dictionaries
+            if hasattr(item, 'id'):
+                item_id = item.id
+                item_text = getattr(item, 'text', '')
+                item_description = getattr(item, 'description', '')
+                item_action_type = getattr(item, 'action_type', '')
+                item_required_role = getattr(item, 'required_role', '')
+                item_required_vip = getattr(item, 'required_vip', False)
+                item_required_level = getattr(item, 'required_level', 0)
+                item_requires_besitos = getattr(item, 'requires_besitos', 0)
+            else:
+                # Assume it's a dictionary
+                item_id = item.get('id', '')
+                item_text = item.get('text', '')
+                item_description = item.get('description', '')
+                item_action_type = item.get('action_type', '')
+                item_required_role = item.get('required_role', '')
+                item_required_vip = item.get('required_vip', False)
+                item_required_level = item.get('required_level', 0)
+                item_requires_besitos = item.get('requires_besitos', 0)
+            
             context = {
-                "item_id": item.id,
-                "action_type": item.action_type.value if hasattr(item.action_type, 'value') else str(item.action_type),
-                "required_role": item.required_role.value if hasattr(item.required_role, 'value') else str(item.required_role),
-                "required_vip": item.required_vip,
-                "required_level": item.required_level,
-                "requires_besitos": item.requires_besitos
+                "item_id": item_id,
+                "action_type": str(item_action_type),
+                "required_role": str(item_required_role),
+                "required_vip": item_required_vip,
+                "required_level": item_required_level,
+                "requires_besitos": item_requires_besitos
             }
             
             # Generate Lucien's response for the item
-            item_prompt = f"Menu item: {item.text}. Description: {item.description}"
+            item_prompt = f"Menu item: {item_text}. Description: {item_description}"
             lucien_text = generate_lucien_response(item_prompt, lucien_profile, context)
             
             return lucien_text
         except Exception as e:
-            logger.warning(f"Failed to generate Lucien text for menu item '{item.id}': {e}")
+            logger.warning(f"Failed to generate Lucien text for menu item '{item_id if 'item_id' in locals() else 'unknown'}': {e}")
             # Fallback to description or text
-            return item.description if item.description else item.text
+            if hasattr(item, 'description'):
+                return getattr(item, 'description', '')
+            elif hasattr(item, 'text'):
+                return getattr(item, 'text', '')
+            elif isinstance(item, dict):
+                return item.get('description', item.get('text', ''))
+            return "Menu item"
 
     def render_menu_response(
         self, 
@@ -179,9 +232,19 @@ class TelegramMenuRenderer:
         # Add item descriptions for better context
         item_descriptions = []
         for item in menu.items:
-            if item.description and not item.action_type == ActionType.SUBMENU:
+            # Get item properties based on type (MenuItem object or dictionary)
+            if isinstance(item, dict):
+                item_description = item.get('description', '')
+                item_text = item.get('text', '')
+                item_action_type = item.get('action_type', '')
+            else:
+                item_description = getattr(item, 'description', '')
+                item_text = getattr(item, 'text', '')
+                item_action_type = getattr(item, 'action_type', '')
+            
+            if item_description and str(item_action_type) != str(ActionType.SUBMENU):
                 # Only add descriptions for non-submenu items to avoid clutter
-                item_descriptions.append(f"• {item.text}: {item.description}")
+                item_descriptions.append(f"• {item_text}: {item_description}")
         
         if item_descriptions:
             message_parts.append("\n".join(item_descriptions))
@@ -226,26 +289,64 @@ class TelegramMenuRenderer:
             lucien_profile = LucienVoiceProfile()
             
             # Generate context for Lucien based on menu properties
+            # Handle both Menu objects and dictionaries
+            if hasattr(menu, 'menu_id'):
+                menu_id = menu.menu_id
+                menu_type = getattr(menu, 'menu_type', '')
+                menu_items = getattr(menu, 'items', [])
+                menu_title = getattr(menu, 'title', '')
+            else:
+                # Assume it's a dictionary
+                menu_id = menu.get('menu_id', '')
+                menu_type = menu.get('menu_type', '')
+                menu_items = menu.get('items', [])
+                menu_title = menu.get('title', '')
+            
+            # Calculate max role required
+            max_role_required = None
+            if menu_items:
+                try:
+                    if hasattr(menu_items[0], 'required_role'):
+                        # MenuItem objects
+                        max_role_required = max((item.required_role for item in menu_items), default=None, key=lambda x: x.value if hasattr(x, 'value') else 0)
+                    elif isinstance(menu_items[0], dict):
+                        # Dictionary items
+                        max_role_required = "free_user"  # Default for dictionaries
+                except Exception:
+                    max_role_required = None
+            
             context = {
-                "menu_id": menu.menu_id,
-                "menu_type": menu.menu_type.value if hasattr(menu.menu_type, 'value') else str(menu.menu_type),
-                "item_count": len(menu.items),
-                "has_vip_items": any(item.required_vip for item in menu.items),
-                "max_role_required": max((item.required_role for item in menu.items), default=None, key=lambda x: x.value if hasattr(x, 'value') else 0) if menu.items else None
+                "menu_id": menu_id,
+                "menu_type": str(menu_type),
+                "item_count": len(menu_items),
+                "has_vip_items": any(
+                    getattr(item, 'required_vip', item.get('required_vip', False)) 
+                    if not isinstance(item, dict) else item.get('required_vip', False)
+                    for item in menu_items
+                ) if menu_items else False,
+                "max_role_required": str(max_role_required) if max_role_required else None
             }
             
             # Generate Lucien's response
-            lucien_text = generate_lucien_response(
-                f"Welcome to the {menu.title} menu. {menu.description}",
+            menu_prompt = f"Welcome to the {menu_title} menu."
+            lucien_response = generate_lucien_response(
                 lucien_profile,
+                menu_prompt,
                 context
             )
+            lucien_text = lucien_response.response_text if lucien_response else menu_prompt
             
             return lucien_text
         except Exception as e:
-            logger.warning(f"Failed to generate Lucien text for menu '{menu.menu_id}': {e}")
+            logger.warning(f"Failed to generate Lucien text for menu '{menu_id if 'menu_id' in locals() else 'unknown'}': {e}")
             # Fallback to description or title
-            return menu.description if menu.description else menu.title
+            if hasattr(menu, 'description'):
+                return getattr(menu, 'description', '')
+            elif hasattr(menu, 'title'):
+                return getattr(menu, 'title', '')
+            elif isinstance(menu, dict):
+                return menu.get('description', menu.get('title', ''))
+            return "Menu"
 
     async def edit_existing_menu(
         self, 

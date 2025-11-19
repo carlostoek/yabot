@@ -2,6 +2,7 @@
 Router component for the Telegram bot framework.
 """
 
+import sys
 from typing import Dict, Callable, Any, Optional, List
 from src.utils.logger import get_logger
 from src.services.user import UserService

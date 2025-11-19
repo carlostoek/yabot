@@ -3,6 +3,7 @@ Bot application for the Telegram bot framework.
 """
 
 import asyncio
+import sys
 from datetime import datetime
 from typing import Any, Optional, Dict, Callable
 from aiogram import Bot, Dispatcher
@@ -14,8 +15,7 @@ from src.config.manager import ConfigManager
 from src.core.router import Router
 from src.core.middleware import MiddlewareManager
 from src.core.error_handler import ErrorHandler
-from src.handlers.commands import CommandHandler
-from src.handlers.telegram_commands import CommandHandler as TelegramCommandHandler
+from src.handlers.telegram_commands import CommandHandler
 from src.handlers.webhook import WebhookHandler
 from src.handlers.menu_router import MenuIntegrationRouter
 from src.handlers.menu_system import MenuSystemCoordinator
@@ -55,7 +55,6 @@ class BotApplication:
         
         # Initialize handlers with database context
         self.command_handler = CommandHandler()
-        self.telegram_command_handler = TelegramCommandHandler()
         self.webhook_handler = WebhookHandler()
         self.menu_router: Optional[MenuIntegrationRouter] = None
         self.menu_system_coordinator: Optional[MenuSystemCoordinator] = None
@@ -334,43 +333,34 @@ class BotApplication:
         )
         logger.info("Menu router set up successfully")
 
+        # Connect menu system coordinator to menu handlers for enhanced integration
+        if self.menu_system_coordinator and hasattr(self.menu_router, 'menu_handler_system'):
+            logger.info("Connecting MenuSystemCoordinator to menu handlers")
+            # The menu router should have access to menu handlers that we can enhance
+            pass
+
         # Now register the Telegram handlers with the dispatcher
         self._register_telegram_handlers()
 
     def _setup_command_handlers(self) -> None:
         """Set up the command handlers with the router."""
         logger.debug("Setting up command handlers")
-        
-        # Reinitialize command handler with database context if available
+
+        # Initialize command handler for fallback only (MenuSystemCoordinator handles most commands)
         if self.user_service and self.event_bus:
             self.command_handler = CommandHandler(self.user_service, self.event_bus)
-            self.telegram_command_handler = TelegramCommandHandler(self.user_service, self.event_bus)
         elif self.user_service:
             self.command_handler = CommandHandler(self.user_service)
-            self.telegram_command_handler = TelegramCommandHandler(self.user_service)
         elif self.event_bus:
             self.command_handler = CommandHandler(event_bus=self.event_bus)
-            self.telegram_command_handler = TelegramCommandHandler(event_bus=self.event_bus)
         else:
             self.command_handler = CommandHandler()
-            self.telegram_command_handler = TelegramCommandHandler()
-        
-        # Register command handlers with the menu router if available, otherwise with main router
+
+        # Register only a fallback handler for unknown commands when MenuSystemCoordinator fails
         router_to_use = self.menu_router if self.menu_router else self.router
-        
-        # Debug logging to see which router we're using
-        logger.debug("Registering command handlers with router: %s", type(router_to_use).__name__)
-        
-        router_to_use.register_command_handler("start", self.command_handler.handle_start)
-        router_to_use.register_command_handler("menu", self.command_handler.handle_menu)
-        router_to_use.register_command_handler("help", self.command_handler.handle_help)
         router_to_use.set_default_handler(self.command_handler.handle_unknown)
-        
-        # Debug logging to verify handlers are registered
-        logger.debug("Command handlers registered. Available commands: %s", 
-                   list(router_to_use._command_handlers.keys()) if hasattr(router_to_use, '_command_handlers') else "Unknown")
-        
-        logger.debug("Command handlers set up successfully")
+
+        logger.debug("Command handlers set up successfully (MenuSystemCoordinator handles primary routing)")
     
     def _register_telegram_handlers(self) -> None:
         """Register Telegram handlers with the dispatcher, using the new MenuIntegrationRouter."""

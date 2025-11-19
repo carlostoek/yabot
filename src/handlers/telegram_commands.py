@@ -364,7 +364,8 @@ class CommandHandler(BaseHandler):
                 "• /start - Show this welcome message\n"
                 "• /menu - Show the main menu\n"
                 "• /help - Show help information\n\n"
-                "Cada interacción será cuidadosamente evaluada para determinar su worthiness."
+                "Cada interacción será cuidadosamente evaluada para determinar su worthiness.\n\n"
+                "aquí mando yo"
             )
         else:
             # Fallback to default Lucien welcome based on relationship level
@@ -375,7 +376,8 @@ class CommandHandler(BaseHandler):
                     "• /start - Show this welcome message\n"
                     "• /menu - Show the main menu\n"
                     "• /help - Show help information\n\n"
-                    "Sus elecciones reflejan el discernimiento que he llegado a appreciate en usted."
+                    "Sus elecciones reflejan el discernimiento que he llegado a appreciate en usted.\n\n"
+                    "aquí mando yo"
                 )
             elif lucien_profile.user_relationship_level == RelationshipLevel.RELUCTANT_APPRECIATOR:
                 welcome_text = (
@@ -384,7 +386,8 @@ class CommandHandler(BaseHandler):
                     "• /start - Show this welcome message\n"
                     "• /menu - Show the main menu\n"
                     "• /help - Show help information\n\n"
-                    "Observaré sus elecciones... podrían revelar mayor sophistication."
+                    "Observaré sus elecciones... podrían revelar mayor sophistication.\n\n"
+                    "aquí mando yo"
                 )
             else:
                 welcome_text = (
@@ -393,7 +396,8 @@ class CommandHandler(BaseHandler):
                     "• /start - Show this welcome message\n"
                     "• /menu - Show the main menu\n"
                     "• /help - Show help information\n\n"
-                    "Cada selección será evaluada y contribuirá a mi assessment de su character."
+                    "Cada selección será evaluada y contribuirá a mi assessment de su character.\n\n"
+                    "aquí mando yo"
                 )
         
         return await self._create_response(welcome_text)
